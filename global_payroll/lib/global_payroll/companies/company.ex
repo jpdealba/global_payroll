@@ -8,9 +8,9 @@ defmodule GlobalPayroll.Companies.Company do
     field(:billing_email, :string)
     field(:status, :string, default: "pending")
     has_many(:employees, GlobalPayroll.Employees.Employee)
-    has_many(:company_transactions, GlobalPayroll.Ledger.CompanyTransaction)
-    has_many(:payroll_runs, GlobalPayroll.Payroll.PayrollRun)
-    has_many(:invoices, GlobalPayroll.Payroll.Invoice)
+    has_many(:company_transactions, GlobalPayroll.Ledgers.CompanyTransaction)
+    has_many(:payroll_runs, GlobalPayroll.Payrolls.PayrollRun)
+    has_many(:invoices, GlobalPayroll.Payrolls.Invoice)
 
     timestamps(type: :utc_datetime)
   end

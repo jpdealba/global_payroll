@@ -1,4 +1,4 @@
-defmodule GlobalPayroll.Payroll.PayrollRun do
+defmodule GlobalPayroll.Payrolls.PayrollRun do
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -8,8 +8,8 @@ defmodule GlobalPayroll.Payroll.PayrollRun do
     field(:error, :string)
     field(:total_amount, :decimal)
     field(:ran_at, :utc_datetime)
-    has_many(:payroll_intents, GlobalPayroll.Payroll.PayrollIntent)
-    has_one(:invoice, GlobalPayroll.Payroll.Invoice)
+    has_many(:payroll_intents, GlobalPayroll.Payrolls.PayrollIntent)
+    has_one(:invoice, GlobalPayroll.Payrolls.Invoice)
     belongs_to(:company, GlobalPayroll.Companies.Company)
 
     timestamps(type: :utc_datetime)

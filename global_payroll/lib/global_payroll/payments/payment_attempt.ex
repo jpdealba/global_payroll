@@ -1,9 +1,9 @@
-defmodule GlobalPayroll.Payment.PaymentAttempt do
+defmodule GlobalPayroll.Payments.PaymentAttempt do
   use Ecto.Schema
   import Ecto.Changeset
 
   schema "payment_attempts" do
-    belongs_to(:payroll_intent, GlobalPayroll.Payroll.PayrollIntent)
+    belongs_to(:payroll_intent, GlobalPayroll.Payrolls.PayrollIntent)
     field(:attempt_number, :integer)
     field(:status, :string)
     field(:error, :string)

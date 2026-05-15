@@ -1,4 +1,4 @@
-defmodule GlobalPayroll.Payroll.Invoice do
+defmodule GlobalPayroll.Payrolls.Invoice do
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -11,7 +11,7 @@ defmodule GlobalPayroll.Payroll.Invoice do
     field(:issued_at, :utc_datetime)
     field(:paid_at, :utc_datetime)
     belongs_to(:company, GlobalPayroll.Companies.Company)
-    belongs_to(:payroll_run, GlobalPayroll.Payroll.PayrollRun)
+    belongs_to(:payroll_run, GlobalPayroll.Payrolls.PayrollRun)
 
     timestamps(type: :utc_datetime)
   end

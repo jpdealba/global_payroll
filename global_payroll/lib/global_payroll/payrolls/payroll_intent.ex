@@ -1,4 +1,4 @@
-defmodule GlobalPayroll.Payroll.PayrollIntent do
+defmodule GlobalPayroll.Payrolls.PayrollIntent do
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -12,10 +12,10 @@ defmodule GlobalPayroll.Payroll.PayrollIntent do
     field(:error, :string)
     field(:retry_count, :integer, default: 0)
     belongs_to(:company, GlobalPayroll.Companies.Company)
-    belongs_to(:payroll_run, GlobalPayroll.Payroll.PayrollRun)
+    belongs_to(:payroll_run, GlobalPayroll.Payrolls.PayrollRun)
     belongs_to(:employee, GlobalPayroll.Employees.Employee)
-    has_one(:payslip, GlobalPayroll.Payroll.Payslip)
-    has_many(:payment_attempts, GlobalPayroll.Payment.PaymentAttempt)
+    has_one(:payslip, GlobalPayroll.Payrolls.Payslip)
+    has_many(:payment_attempts, GlobalPayroll.Payments.PaymentAttempt)
 
     timestamps(type: :utc_datetime)
   end

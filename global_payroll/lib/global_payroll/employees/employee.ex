@@ -10,8 +10,8 @@ defmodule GlobalPayroll.Employees.Employee do
     belongs_to(:company, GlobalPayroll.Companies.Company)
     belongs_to(:country_tax_rule, GlobalPayroll.Taxes.CountryTaxRule)
     has_many(:payment_methods, GlobalPayroll.Employees.PaymentMethod)
-    has_many(:payroll_intents, GlobalPayroll.Payroll.PayrollIntent)
-    has_many(:payslips, GlobalPayroll.Payroll.Payslip)
+    has_many(:payroll_intents, GlobalPayroll.Payrolls.PayrollIntent)
+    has_many(:payslips, GlobalPayroll.Payrolls.Payslip)
 
     timestamps(type: :utc_datetime)
   end

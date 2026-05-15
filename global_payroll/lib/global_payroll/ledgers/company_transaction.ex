@@ -1,4 +1,4 @@
-defmodule GlobalPayroll.Ledger.CompanyTransaction do
+defmodule GlobalPayroll.Ledgers.CompanyTransaction do
   use Ecto.Schema
   import Ecto.Changeset
 

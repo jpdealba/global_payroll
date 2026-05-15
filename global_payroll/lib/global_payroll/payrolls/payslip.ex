@@ -1,4 +1,4 @@
-defmodule GlobalPayroll.Payroll.Payslip do
+defmodule GlobalPayroll.Payrolls.Payslip do
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -9,7 +9,7 @@ defmodule GlobalPayroll.Payroll.Payslip do
     field(:net_salary, :decimal)
     field(:pay_period, :string)
     field(:generated_at, :utc_datetime)
-    belongs_to(:payroll_intent, GlobalPayroll.Payroll.PayrollIntent)
+    belongs_to(:payroll_intent, GlobalPayroll.Payrolls.PayrollIntent)
     belongs_to(:employee, GlobalPayroll.Employees.Employee)
 
     timestamps(type: :utc_datetime)
