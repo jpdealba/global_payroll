@@ -14,6 +14,8 @@ defmodule GlobalPayroll.Payroll.PayrollIntent do
     belongs_to(:company, GlobalPayroll.Companies.Company)
     belongs_to(:payroll_run, GlobalPayroll.Payroll.PayrollRun)
     belongs_to(:employee, GlobalPayroll.Employees.Employee)
+    has_one(:payslip, GlobalPayroll.Payroll.Payslip)
+    has_many(:payment_attempts, GlobalPayroll.Payment.PaymentAttempt)
 
     timestamps(type: :utc_datetime)
   end

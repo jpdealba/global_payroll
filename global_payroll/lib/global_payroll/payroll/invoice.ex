@@ -1,8 +1,8 @@
-defmodule GlobalPayroll.Payroll.PayrollInvoice do
+defmodule GlobalPayroll.Payroll.Invoice do
   use Ecto.Schema
   import Ecto.Changeset
 
-  schema "payroll_invoices" do
+  schema "invoices" do
     field(:total_gross_salaries, :decimal)
     field(:total_taxes_withheld, :decimal)
     field(:total_platform_fees, :decimal)
@@ -17,8 +17,8 @@ defmodule GlobalPayroll.Payroll.PayrollInvoice do
   end
 
   @doc false
-  def changeset(payroll_invoice, attrs) do
-    payroll_invoice
+  def changeset(invoice, attrs) do
+    invoice
     |> cast(attrs, [
       :company_id,
       :payroll_run_id,

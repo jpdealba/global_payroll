@@ -9,8 +9,7 @@ defmodule GlobalPayroll.Payroll.PayrollRun do
     field(:total_amount, :decimal)
     field(:ran_at, :utc_datetime)
     has_many(:payroll_intents, GlobalPayroll.Payroll.PayrollIntent)
-    has_many(:payslips, GlobalPayroll.Payroll.Payslip)
-    has_one(:payroll_invoice, GlobalPayroll.Payroll.PayrollInvoice)
+    has_one(:invoice, GlobalPayroll.Payroll.Invoice)
     belongs_to(:company, GlobalPayroll.Companies.Company)
 
     timestamps(type: :utc_datetime)
