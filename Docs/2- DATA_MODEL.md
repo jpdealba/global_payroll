@@ -158,6 +158,27 @@ Generated after a payroll_intent completes. The employee-facing document.
 
 ---
 
+### `payment_attempts`
+One record per payment attempt. Tracks the full retry history for each payroll_intent.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | uuid | PK |
+| payroll_intent_id | uuid | FK → payroll_intents |
+| attempt_number | integer | 1, 2, or 3 |
+| status | enum | `succeeded`, `failed` |
+| error | string | nullable — raw error from payment provider |
+| attempted_at | datetime | When the attempt was made |
+| inserted_at | datetime | |
+
+**Constraints:**
+- Unique on `(payroll_intent_id, attempt_number)` — prevents recording the same attempt twice
+
+**Why this exists separately from `payroll_intents`:**
+`payroll_intents.retry_count` tracks how many attempts have been made. `payment_attempts` stores the full history — what failed, when, and why. This separation keeps the intent clean and gives full audit trail of every interaction with the payment provider.
+
+---
+
 ### `invoices`
 One per payroll run. The company-facing document.
 
@@ -192,8 +213,8 @@ companies ──< employees ──< payment_methods
     ├──< company_transactions
     │
     └──< payroll_runs ──< payroll_intents ──> payslips
-              │
-              └──> invoices
+              │                   │
+              └──> invoices        └──< payment_attempts
 ```
 
 ---
