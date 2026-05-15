@@ -13,5 +13,6 @@ defmodule GlobalPayroll.Repo.Migrations.CreateCompanies do
     end
 
     create unique_index(:companies, [:billing_email])
+    create index(:companies, [:inserted_at, :id])
   end
 end
