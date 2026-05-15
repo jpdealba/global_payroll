@@ -1,5 +1,4 @@
 defmodule GlobalPayroll.Taxes do
-  import Ecto.Query
   alias GlobalPayroll.Taxes.CountryTaxRule
   alias GlobalPayroll.{Pagination, Repo}
 
