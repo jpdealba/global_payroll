@@ -2,6 +2,9 @@ defmodule GlobalPayroll.Payments.PaymentAttempt do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "payment_attempts" do
     belongs_to(:payroll_intent, GlobalPayroll.Payrolls.PayrollIntent)
     field(:attempt_number, :integer)

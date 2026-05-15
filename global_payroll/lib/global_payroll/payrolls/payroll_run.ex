@@ -2,6 +2,9 @@ defmodule GlobalPayroll.Payrolls.PayrollRun do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "payroll_runs" do
     field(:pay_period, :string)
     field(:status, :string, default: "draft")

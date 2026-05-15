@@ -2,6 +2,9 @@ defmodule GlobalPayroll.Payrolls.Invoice do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "invoices" do
     field(:total_gross_salaries, :decimal)
     field(:total_taxes_withheld, :decimal)

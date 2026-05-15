@@ -2,6 +2,9 @@ defmodule GlobalPayroll.Ledgers.CompanyTransaction do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "company_transactions" do
     belongs_to(:company, GlobalPayroll.Companies.Company)
     field(:amount, :decimal)

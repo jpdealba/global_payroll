@@ -2,6 +2,9 @@ defmodule GlobalPayroll.Taxes.CountryTaxRule do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "country_tax_rules" do
     field(:country_code, :string)
     field(:country_name, :string)

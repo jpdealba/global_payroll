@@ -2,6 +2,9 @@ defmodule GlobalPayroll.Employees.PaymentMethod do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "payment_methods" do
     belongs_to(:employee, GlobalPayroll.Employees.Employee)
     field(:bank_name, :string)

@@ -2,6 +2,9 @@ defmodule GlobalPayroll.Payrolls.PayrollIntent do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   schema "payroll_intents" do
     field(:gross_salary, :decimal)
     field(:income_tax, :decimal)
