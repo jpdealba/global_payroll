@@ -1,4 +1,4 @@
-defmodule GlobalPayroll.Query do
+defmodule GlobalPayroll.Pagination do
   import Ecto.Query
 
   # Applies cursor-based pagination to any Ecto query.

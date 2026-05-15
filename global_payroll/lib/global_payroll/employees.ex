@@ -1,7 +1,7 @@
 defmodule GlobalPayroll.Employees do
   import Ecto.Query
   alias GlobalPayroll.Employees.{Employee, PaymentMethod}
-  alias GlobalPayroll.{Query, Repo}
+  alias GlobalPayroll.{Pagination, Repo}
 
   def create_employee(attrs) do
     %Employee{} |> Employee.changeset(attrs) |> Repo.insert()
@@ -10,9 +10,9 @@ defmodule GlobalPayroll.Employees do
   def list_employees_by_company(company_id, cursor \\ nil, per_page \\ 20) do
     Employee
     |> where([e], e.company_id == ^company_id)
-    |> Query.paginate(cursor, per_page)
+    |> Pagination.paginate(cursor, per_page)
     |> Repo.all()
-    |> then(&{&1, Query.next_cursor(&1, per_page)})
+    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
   end
 
   # Returns all active employees for a company — used by payroll to know who gets paid.

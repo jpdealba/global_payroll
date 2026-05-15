@@ -2,13 +2,13 @@ defmodule GlobalPayroll.Companies do
   import Ecto.Query
   alias GlobalPayroll.Companies.Company
   alias GlobalPayroll.Ledgers.CompanyTransaction
-  alias GlobalPayroll.{Query, Repo}
+  alias GlobalPayroll.{Pagination, Repo}
 
   def list_companies(cursor \\ nil, per_page \\ 20) do
     Company
-    |> Query.paginate(cursor, per_page)
+    |> Pagination.paginate(cursor, per_page)
     |> Repo.all()
-    |> then(&{&1, Query.next_cursor(&1, per_page)})
+    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
   end
 
   def get_company(id) do
