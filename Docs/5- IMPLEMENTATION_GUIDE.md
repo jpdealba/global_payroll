@@ -5,13 +5,16 @@
 ## Fase 1 — Setup
 
 ### 1. Crear proyecto Phoenix
+
 ```bash
 mix phx.new global_payroll --no-html --no-assets
 cd global_payroll
 ```
 
 ### 2. Agregar dependencias
+
 En `mix.exs`:
+
 ```elixir
 {:broadway, "~> 1.0"},
 {:ex_aws, "~> 2.0"},
@@ -21,10 +24,13 @@ En `mix.exs`:
 ```
 
 ### 3. Configurar PostgreSQL
+
 En `config/dev.exs`, verificar que apunta a `localhost:5432` con user/password `postgres`.
 
 ### 4. Configurar SQS
+
 En `config/dev.exs`:
+
 ```elixir
 config :ex_aws,
   access_key_id: "local",
@@ -47,23 +53,26 @@ config :ex_aws, :sqs,
 
 Crear en este orden (respeta foreign keys):
 
-| # | Tabla | Comando |
-|---|-------|---------|
-| 1 | `companies` | `mix ecto.gen.migration create_companies` |
-| 2 | `country_tax_rules` | `mix ecto.gen.migration create_country_tax_rules` |
-| 3 | `employees` | `mix ecto.gen.migration create_employees` |
-| 4 | `payment_methods` | `mix ecto.gen.migration create_payment_methods` |
-| 5 | `company_transactions` | `mix ecto.gen.migration create_company_transactions` |
-| 6 | `payroll_runs` | `mix ecto.gen.migration create_payroll_runs` |
-| 7 | `payroll_intents` | `mix ecto.gen.migration create_payroll_intents` |
-| 8 | `payslips` | `mix ecto.gen.migration create_payslips` |
-| 9 | `invoices` | `mix ecto.gen.migration create_invoices` |
+
+| #   | Tabla                  | Comando                                              |
+| --- | ---------------------- | ---------------------------------------------------- |
+| 1   | `companies`            | `mix ecto.gen.migration create_companies`            |
+| 2   | `country_tax_rules`    | `mix ecto.gen.migration create_country_tax_rules`    |
+| 3   | `employees`            | `mix ecto.gen.migration create_employees`            |
+| 4   | `payment_methods`      | `mix ecto.gen.migration create_payment_methods`      |
+| 5   | `company_transactions` | `mix ecto.gen.migration create_company_transactions` |
+| 6   | `payroll_runs`         | `mix ecto.gen.migration create_payroll_runs`         |
+| 7   | `payroll_intents`      | `mix ecto.gen.migration create_payroll_intents`      |
+| 8   | `payslips`             | `mix ecto.gen.migration create_payslips`             |
+| 9   | `invoices`             | `mix ecto.gen.migration create_invoices`             |
+
 
 Referencia de campos: `2- DATA_MODEL.md`.
 
 **Verificar:** `mix ecto.migrate` sin errores. Confirmar tablas en Adminer (`localhost:8080`).
 
 ### 6. Escribir Ecto schemas
+
 Un schema por tabla en `lib/global_payroll/`. Incluir tipos, validaciones y constraints del data model.
 
 **Verificar:** `mix compile` sin errores.
@@ -75,6 +84,7 @@ Un schema por tabla en `lib/global_payroll/`. Incluir tipos, validaciones y cons
 Implementar en orden de dependencia — cada contexto solo puede llamar a los anteriores.
 
 ### 7. `Companies`
+
 - Registrar empresa (status inicial: `pending`)
 - Activar empresa
 - Calcular balance: `SELECT SUM(amount) FROM company_transactions WHERE company_id = x`
@@ -82,12 +92,14 @@ Implementar en orden de dependencia — cada contexto solo puede llamar a los an
 **Verificar:** Crear empresa en iex, activarla, consultar balance vacío = 0.
 
 ### 8. `Taxes`
+
 - Lookup de reglas por `country_code`
 - Seed de países con sus tasas (`income_tax_rate`, `social_security_rate`)
 
 **Verificar:** `Taxes.get_by_country("MX")` retorna la regla correcta.
 
 ### 9. `Employees`
+
 - Crear employee (vinculado a company y country_tax_rule)
 - Agregar método de pago (default)
 - Solo employees `active` participan en payroll
@@ -95,6 +107,7 @@ Implementar en orden de dependencia — cada contexto solo puede llamar a los an
 **Verificar:** Crear employee, asignarle banco, listarlo por empresa.
 
 ### 10. `Ledger`
+
 - Solo inserts — nunca updates ni deletes
 - Tipos: `deposit`, `payroll_deduction`, `refund`
 - `deposit/2` — agrega fondos a una empresa
@@ -102,6 +115,7 @@ Implementar en orden de dependencia — cada contexto solo puede llamar a los an
 **Verificar:** Insertar depósito, confirmar que el balance de la empresa aumenta.
 
 ### 11. `Payroll`
+
 - Crear run (`draft`)
 - Calcular run:
   - Verificar balance suficiente
@@ -112,6 +126,7 @@ Implementar en orden de dependencia — cada contexto solo puede llamar a los an
 **Verificar:** Crear run, calcularlo, revisar intents generados con montos correctos.
 
 ### 12. `Payments`
+
 - Ejecutar pago individual por `payroll_intent_id`
 - Llamar al payment provider (mock — retorna éxito/fallo aleatorio)
 - Reintentos: hasta 3 veces antes de marcar `failed`
@@ -128,23 +143,27 @@ Implementar en orden de dependencia — cada contexto solo puede llamar a los an
 
 Implementar siguiendo `3- API DESIGN.md`:
 
-| Recurso | Rutas |
-|---------|-------|
-| Companies | `GET /companies`, `POST /companies`, `PUT /companies/:id` |
-| Employees | `GET /employees`, `POST /employees`, `PUT /employees/:id` |
+
+| Recurso         | Rutas                                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| Companies       | `GET /companies`, `POST /companies`, `PUT /companies/:id`                                                  |
+| Employees       | `GET /employees`, `POST /employees`, `PUT /employees/:id`                                                  |
 | Payment Methods | `GET /payment-methods`, `POST /payment-methods`, `PUT /payment-methods/:id`, `DELETE /payment-methods/:id` |
-| Taxes | `GET /country-tax-rules`, `PUT /country-tax-rules/:id` |
-| Payroll Runs | `GET /payroll-runs`, `GET /payroll-runs/:id`, `POST /payroll-runs` |
-| Payroll Actions | `POST /payroll-runs/:id/start`, `POST /payroll-runs/:id/approve` |
-| Payroll Intents | `GET /payroll-runs/:id/intents` |
-| Payslips | `GET /payroll-runs/:id/payslips`, `GET /employees/:id/payslips` |
-| Invoices | `GET /companies/:id/invoices` |
-| Transactions | `GET /companies/:id/transactions`, `POST /companies/:id/deposit` |
+| Taxes           | `GET /country-tax-rules`, `PUT /country-tax-rules/:id`                                                     |
+| Payroll Runs    | `GET /payroll-runs`, `GET /payroll-runs/:id`, `POST /payroll-runs`                                         |
+| Payroll Actions | `POST /payroll-runs/:id/start`, `POST /payroll-runs/:id/approve`                                           |
+| Payroll Intents | `GET /payroll-runs/:id/intents`                                                                            |
+| Payslips        | `GET /payroll-runs/:id/payslips`, `GET /employees/:id/payslips`                                            |
+| Invoices        | `GET /companies/:id/invoices`                                                                              |
+| Transactions    | `GET /companies/:id/transactions`, `POST /companies/:id/deposit`                                           |
+
 
 **Verificar:** Cada endpoint responde con el status y shape correctos.
 
 ### 14. Probar con curl/Postman
+
 Recorrer el happy path completo antes de seguir:
+
 1. Crear empresa → activar → depositar fondos
 2. Agregar employees con banco
 3. Crear run → start → verificar status `pending_approval`
@@ -156,13 +175,15 @@ Recorrer el happy path completo antes de seguir:
 
 Antes de implementar los workers, entender qué herramienta aplica en cada caso:
 
-| Herramienta | Usar? | Por qué |
-|-------------|-------|---------|
-| **Broadway** | Sí — es el core | Consume SQS, maneja concurrencia, acks y reintentos automáticamente |
-| **Task.async_stream** | Sí — dentro de Broadway | Para calcular net pay de N employees en paralelo dentro de un solo mensaje |
-| **Task.Supervisor** | No | Broadway ya supervisa sus workers |
-| **DynamicSupervisor** | No | Sería necesario si el estado del run viviera en un proceso en memoria — pero vive en PostgreSQL |
-| **GenServer** | No | Mismo motivo — no hay estado en memoria que mantener entre llamadas |
+
+| Herramienta           | Usar?                   | Por qué                                                                                         |
+| --------------------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| **Broadway**          | Sí — es el core         | Consume SQS, maneja concurrencia, acks y reintentos automáticamente                             |
+| **Task.async_stream** | Sí — dentro de Broadway | Para calcular net pay de N employees en paralelo dentro de un solo mensaje                      |
+| **Task.Supervisor**   | No                      | Broadway ya supervisa sus workers                                                               |
+| **DynamicSupervisor** | No                      | Sería necesario si el estado del run viviera en un proceso en memoria — pero vive en PostgreSQL |
+| **GenServer**         | No                      | Mismo motivo — no hay estado en memoria que mantener entre llamadas                             |
+
 
 ### Flujo real del async
 
@@ -196,12 +217,15 @@ Task.start(fn -> Payroll.calculate(run_id) end)
 
 Maneja dos tipos de mensaje:
 
-| job | Acción | Concurrencia |
-|-----|--------|--------------|
-| `calculate_payroll` | Calcula net pay por employee, crea intents | `Task.async_stream` sobre la lista de employees |
-| `execute_payment` | Ejecuta un pago individual, publica resultado en `payment-results` | Broadway procesa N mensajes en paralelo (uno por employee) |
+
+| job                 | Acción                                                             | Concurrencia                                               |
+| ------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------- |
+| `calculate_payroll` | Calcula net pay por employee, crea intents                         | `Task.async_stream` sobre la lista de employees            |
+| `execute_payment`   | Ejecuta un pago individual, publica resultado en `payment-results` | Broadway procesa N mensajes en paralelo (uno por employee) |
+
 
 Estructura básica:
+
 ```elixir
 defmodule GlobalPayroll.Workers.PayrollWorker do
   use Broadway
@@ -232,10 +256,12 @@ end
 
 ### 16. `ResultsWorker` — consume `payment-results`
 
-| status | Acción |
-|--------|--------|
+
+| status      | Acción                                           |
+| ----------- | ------------------------------------------------ |
 | `completed` | `Ledger.record_deduction(intent_id)` + notificar |
-| `failed` | `Ledger.record_refund(intent_id)` + notificar |
+| `failed`    | `Ledger.record_refund(intent_id)` + notificar    |
+
 
 **Verificar:** Publicar mensaje de prueba en `payroll-jobs` desde iex, confirmar que Broadway lo procesa y actualiza el estado del run.
 
@@ -273,3 +299,4 @@ Migrations → Schemas → Companies → Taxes → Employees
                                                           │
                                                        Workers → API
 ```
+
