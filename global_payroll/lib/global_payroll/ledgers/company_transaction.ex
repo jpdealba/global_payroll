@@ -12,7 +12,7 @@ defmodule GlobalPayroll.Ledgers.CompanyTransaction do
     field(:reference_id, :binary_id)
     field(:description, :string)
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime, updated_at: false)
   end
 
   @doc false

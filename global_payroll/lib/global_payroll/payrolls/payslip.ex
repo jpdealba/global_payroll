@@ -15,7 +15,7 @@ defmodule GlobalPayroll.Payrolls.Payslip do
     belongs_to(:payroll_intent, GlobalPayroll.Payrolls.PayrollIntent)
     belongs_to(:employee, GlobalPayroll.Employees.Employee)
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime, updated_at: false)
   end
 
   @doc false
