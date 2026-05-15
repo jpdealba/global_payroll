@@ -49,6 +49,17 @@ config :global_payroll, GlobalPayrollWeb.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
+# AWS configuration
+config :ex_aws,
+  access_key_id: "local",
+  secret_access_key: "local",
+  region: "us-east-1"
+
+config :ex_aws, :sqs,
+  scheme: "http://",
+  host: "localhost",
+  port: 9324
+
 # Enable dev routes for dashboard and mailbox
 config :global_payroll, dev_routes: true
 
