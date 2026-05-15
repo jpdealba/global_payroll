@@ -9,6 +9,8 @@
 /global_payroll/_build/
 /global_payroll/deps/
 
+mix.lock
+
 # If you run "mix test --cover", coverage assets end up here.
 /cover/
 

@@ -44,14 +44,19 @@ defmodule GlobalPayroll.MixProject do
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:swoosh, "~> 1.16"},
+      {:swoosh, "~> 1.15"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      # AWS SQS — used for async payroll job queuing
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_sqs, "~> 3.4"},
+      {:hackney, "~> 1.9"},    # HTTP client required by ex_aws
+      {:sweet_xml, "~> 0.7"}  # XML parser required by ex_aws_sqs
     ]
   end
 
