@@ -12,7 +12,7 @@ defmodule GlobalPayroll.Taxes.CountryTaxRule do
     field(:social_security_rate, :decimal)
     field(:currency, :string)
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime, updated_at: false)
   end
 
   @doc false
