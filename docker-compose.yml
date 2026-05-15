@@ -1,0 +1,49 @@
+# ┌─────────────────────────────────────────────┐
+# │              Local Services                  │
+# │                                              │
+# │  PostgreSQL  → localhost:5432                │
+# │  SQS API     → http://localhost:9324         │
+# │  SQS UI      → http://localhost:9325         │
+# │  DB UI       → http://localhost:8080         │
+# │                                              │
+# │  Adminer login:                              │
+# │    System:   PostgreSQL                      │
+# │    Server:   postgres                        │
+# │    User:     postgres                        │
+# │    Password: postgres                        │
+# │    Database: global_payroll_dev              │
+# │                                              │
+# │  SQS queues:                                 │
+# │    payroll-jobs                              │
+# │    payment-results                           │
+# └─────────────────────────────────────────────┘
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: global_payroll_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  sqs:
+    image: roribio16/alpine-sqs:latest
+    ports:
+      - "9324:9324"  # SQS API
+      - "9325:9325"  # UI
+    volumes:
+      - ./elasticmq.conf:/opt/custom/elasticmq.conf
+
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
