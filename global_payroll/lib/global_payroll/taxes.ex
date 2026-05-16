@@ -16,4 +16,11 @@ defmodule GlobalPayroll.Taxes do
   def create_country_tax_rule(attrs) do
     %CountryTaxRule{} |> CountryTaxRule.changeset(attrs) |> Repo.insert()
   end
+
+  def update_country_tax_rule(id, attrs) do
+    case Repo.get(CountryTaxRule, id) do
+      nil -> {:error, :not_found}
+      rule -> rule |> CountryTaxRule.changeset(attrs) |> Repo.update()
+    end
+  end
 end
