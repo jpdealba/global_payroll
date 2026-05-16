@@ -1,6 +1,6 @@
 defmodule GlobalPayrollWeb.PayrollRunController do
   use GlobalPayrollWeb, :controller
-  alias GlobalPayroll.Payrolls
+  alias GlobalPayroll.{Payrolls, Queue}
 
   def index(conn, %{"company_id" => company_id} = params) do
     {runs, next_cursor} = Payrolls.list_runs(company_id, params["cursor"])
@@ -21,19 +21,32 @@ defmodule GlobalPayrollWeb.PayrollRunController do
     end
   end
 
-  # Triggers payroll calculation. Calls calculate_run/1 synchronously —
-  # in production this would enqueue a Broadway job instead.
+  # Enqueues a calculate_payroll job and returns 202 immediately.
+  # The Broadway worker picks it up and calls Payrolls.calculate_run/1.
   def start(conn, %{"id" => id}) do
-    case Payrolls.calculate_run(id) do
-      {:ok, run} -> render(conn, :show, run: run)
-      {:error, reason} -> conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
+    case Payrolls.get_run(id) do
+      {:ok, _run} ->
+        {:ok, _} = Queue.enqueue_calculate_payroll(id)
+        send_resp(conn, 202, "")
+
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "not found"})
     end
   end
 
+  # Transitions the run to approved synchronously (immediate feedback on invalid state),
+  # then fans out one execute_payment message per intent using SQS batch API.
   def approve(conn, %{"id" => id}) do
-    case Payrolls.approve_run(id) do
-      {:ok, run} -> render(conn, :show, run: run)
-      {:error, reason} -> conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
+    with {:ok, run} <- Payrolls.approve_run(id) do
+      run.id
+      |> Payrolls.list_intents()
+      |> Enum.map(fn intent -> intent.id end)
+      |> Queue.enqueue_execute_payments()
+
+      send_resp(conn, 202, "")
+    else
+      {:error, reason} ->
+        conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
     end
   end
 
@@ -48,4 +61,5 @@ defmodule GlobalPayrollWeb.PayrollRunController do
     intents = Payrolls.list_intents(run_id)
     render(conn, :intents, intents: intents)
   end
+
 end

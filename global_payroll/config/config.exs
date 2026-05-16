@@ -11,6 +11,10 @@ config :global_payroll,
   ecto_repos: [GlobalPayroll.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :global_payroll, :queues,
+  payroll_jobs: "http://localhost:9324/000000000000/payroll-jobs",
+  payment_results: "http://localhost:9324/000000000000/payment-results"
+
 # Configures the endpoint
 config :global_payroll, GlobalPayrollWeb.Endpoint,
   url: [host: "localhost"],
