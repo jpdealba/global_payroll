@@ -34,7 +34,7 @@ services:
     image: roribio16/alpine-sqs:latest
     ports:
       - "9324:9324"  # SQS API
-      - "9325:9325"  # UI
+      - "9325:9325"  # UI (nota: la UI no refleja deletes en tiempo real, usar curl para verificar)
     volumes:
       - ./elasticmq.conf:/opt/custom/elasticmq.conf
 

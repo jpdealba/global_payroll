@@ -12,9 +12,7 @@ defmodule GlobalPayroll.Application do
       GlobalPayroll.Repo,
       {DNSCluster, query: Application.get_env(:global_payroll, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: GlobalPayroll.PubSub},
-      # Start a worker by calling: GlobalPayroll.Worker.start_link(arg)
-      # {GlobalPayroll.Worker, arg},
-      # Start to serve requests, typically the last entry
+      GlobalPayroll.Workers.PayrollWorker,
       GlobalPayrollWeb.Endpoint
     ]
 

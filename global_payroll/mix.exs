@@ -53,10 +53,12 @@ defmodule GlobalPayroll.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       # AWS SQS — used for async payroll job queuing
+      {:broadway, "~> 1.1"},
+      {:broadway_sqs, "~> 0.7"},
       {:ex_aws, "~> 2.5"},
       {:ex_aws_sqs, "~> 3.4"},
-      {:hackney, "~> 1.9"},    # HTTP client required by ex_aws
-      {:sweet_xml, "~> 0.7"}  # XML parser required by ex_aws_sqs
+      {:hackney, "~> 1.9"},
+      {:sweet_xml, "~> 0.7"}
     ]
   end
 
