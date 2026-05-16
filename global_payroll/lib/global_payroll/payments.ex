@@ -36,11 +36,12 @@ defmodule GlobalPayroll.Payments do
     attempt_number = intent.retry_count + 1
     key = "intent-#{intent.id}-attempt-#{intent.retry_count}"
 
-    intent
-    |> PayrollIntent.changeset(%{idempotency_key: key})
-    |> Repo.update!()
+    updated_intent =
+      intent
+      |> PayrollIntent.changeset(%{idempotency_key: key})
+      |> Repo.update!()
 
-    result = MockPaymentProvider.call(intent)
+    result = MockPaymentProvider.call(updated_intent)
     record_attempt(intent, attempt_number, result)
 
     case result do
@@ -138,9 +139,9 @@ end
 # Mock payment provider — simulates a real provider with random success/failure.
 # Replace this module with a real HTTP client when integrating with Wise or a bank.
 defmodule GlobalPayroll.Payments.MockPaymentProvider do
-  def call(_intent) do
+  def call(intent) do
     if :rand.uniform(10) > 1 do
-      {:ok, "mock-provider-#{System.unique_integer([:positive])}"}
+      {:ok, "mock-provider-#{intent.idempotency_key}"}
     else
       {:error, "payment provider timeout"}
     end
