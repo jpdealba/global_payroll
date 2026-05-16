@@ -30,13 +30,14 @@ Frontend ──────────────► API Gateway              
                           │          ┌────────┴─────────┐                            │
                           │          ▼                   ▼                            │
                           ├──► LB ──► Payment Service   Notifications Service        │
-                          │                   │               (no DB)                 │
-                          │              Message Broker (SQS)                        │
+                          │          │     ▲                 (no DB)                  │
+                          │          │     │ webhook                                  │
+                          │          │  Payment Provider (external)                   │
+                          │          │                                                 │
+                          │          └──► Message Broker (SQS: payment-results)      │
                           │                   │                                       │
                           │                   ├──► Ledger Service                    │
                           │                   └──► Notifications Service             │
-                          │                   │                                       │
-                          │                   └──► Payment Provider (external)       │
                           │                                                           │
                           └─────────────────────────────────────────────────────────┘
 ```
@@ -50,18 +51,17 @@ Frontend ──────────────► API Gateway              
 | **Employees Service** | Employee profiles, payment methods | PostgreSQL |
 | **Taxes Service** | Country tax rules lookup | PostgreSQL |
 | **Payroll Service** | Payroll run orchestration, payslips, invoices | PostgreSQL + S3 |
-| **Payment Service** | Payment execution, retries, Payment Provider integration | PostgreSQL |
+| **Payment Service** | Payment execution, retries, webhook handling, reconciliation | PostgreSQL |
 | **Ledger Service** | Append-only company_transactions, balance computation | PostgreSQL |
 | **Notifications Service** | Notifies companies of run status changes | None |
 
 ### Message Broker Flow
 
 ```
-Payroll Service ──[run approved]──► SQS ──► Payment Service
-                ──[run completed/failed]──► SQS ──► Notifications Service
-
-Payment Service ──[payment done/failed]──► SQS ──► Ledger Service
-                ──[payment done/failed]──► SQS ──► Notifications Service
+Payroll Service ──[run approved]──► SQS (payroll-jobs) ──► Payment Service
+Payment Provider ──[webhook]──► Payment Service ──► SQS (payment-results)
+Payment Service (payment-results) ──► Ledger Service
+                                  └──► Notifications Service
 ```
 
 ### Storage
@@ -78,74 +78,92 @@ with clear internal module boundaries. The design principles still apply — mod
 cross-call each other arbitrarily, and the event flow is preserved via a real queue.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                Single Elixir/Phoenix Node                    │
-│                                                               │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐           │
-│  │Companies │  │Employees │  │ Payroll           │           │
-│  │  Context │  │  Context │  │ Context           │           │
-│  └──────────┘  └──────────┘  └──────────────────┘           │
-│                                      │                        │
-│  ┌──────────┐  ┌──────────┐         │ POST /start            │
-│  │  Taxes   │  │  Ledger  │◄──┐     │ → enqueue calculate    │
-│  │  Context │  │  Context │   │     │ POST /approve          │
-│  └──────────┘  └──────────┘   │     │ → enqueue 1 msg/intent │
-│                                │     ▼                        │
-│                                │  [payroll-jobs]              │
-│                                │     │                        │
-│                         ┌──────┴─────▼──────────────────┐    │
-│                         │  Broadway Consumer             │    │
-│                         │  · calculate_payroll(run_id)  │    │
-│                         │  · execute_payment(intent_id) │    │
-│                         │    → calls PaymentProvider    │    │
-│                         │    → publishes to results     │    │
-│                         └──────────────┬────────────────┘    │
-│                                        │                      │
-│                                 [payment-results]             │
-│                                        │                      │
-│                         ┌──────────────▼────────────────┐    │
-│                         │  Broadway Consumer             │    │
-│                         │  · completed → Ledger debit   │    │
-│                         │  · failed    → Ledger refund  │    │
-│                         │  · any       → Notifications  │    │
-│                         └───────────────────────────────┘    │
-│                                                               │
-└───────────────────────────────┬───────────────────────────── ┘
-                                │
-                  ┌─────────────┴─────────────┐
-                  │      PostgreSQL (single)   │
-                  │   all tables, one DB       │
-                  └───────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                   Single Elixir/Phoenix Node                      │
+│                                                                    │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐                │
+│  │Companies │  │Employees │  │ Payroll           │                │
+│  │  Context │  │  Context │  │ Context           │                │
+│  └──────────┘  └──────────┘  └──────────────────┘                │
+│                                      │                             │
+│  ┌──────────┐  ┌──────────┐         │ POST /start                 │
+│  │  Taxes   │  │  Ledger  │◄──┐     │ → enqueue calculate         │
+│  │  Context │  │  Context │   │     │ POST /approve               │
+│  └──────────┘  └──────────┘   │     │ → enqueue 1 msg/intent      │
+│                                │     ▼                             │
+│                                │  [payroll-jobs]                   │
+│                                │     │                             │
+│                         ┌──────┴─────▼──────────────────┐         │
+│                         │  Broadway (PaymentWorker)       │         │
+│                         │  · calculate_payroll(run_id)   │         │
+│                         │  · execute_payment(intent_id)  │         │
+│                         │    → calls Provider API         │         │
+│                         │    → intent = "processing"      │         │
+│                         └───────────────────────────────┘         │
+│                                                                    │
+│  Payment Provider ──webhook──► POST /webhooks/payment             │
+│                                      │                             │
+│                                      ▼                             │
+│                              Webhook Handler                       │
+│                              · enqueue to payment-results          │
+│                              · return 200 immediately              │
+│                                      │                             │
+│                               [payment-results]                    │
+│                                      │                             │
+│                         ┌────────────▼──────────────────┐         │
+│                         │  Broadway (ResultsWorker)       │         │
+│                         │  · completed → Ledger debit    │         │
+│                         │  · failed    → retry via SQS   │         │
+│                         │              or Ledger refund  │         │
+│                         └───────────────────────────────┘         │
+│                                                                    │
+│  Reconciliation Job (periodic)                                     │
+│  · find intents stuck in "processing" > threshold                  │
+│  · poll Provider API → resolve or retry                            │
+│                                                                    │
+└──────────────────────────┬─────────────────────────────────────── ┘
+                           │
+             ┌─────────────┴─────────────┐
+             │      PostgreSQL (single)   │
+             │   all tables, one DB       │
+             └───────────────────────────┘
 ```
 
 ### Queue Message Design
 
-**`payroll-jobs`** — published by the API, consumed by Broadway Payment Worker
+**`payroll-jobs`** — published by the API and by ResultsWorker on retry
 
 | Trigger | Message | Quantity |
 |---------|---------|----------|
 | `POST /payroll-runs/:id/start` | `{ job: "calculate_payroll", run_id }` | 1 per run |
 | `POST /payroll-runs/:id/approve` | `{ job: "execute_payment", intent_id }` | 1 per employee |
+| Payment failed, retry_count < 3 | `{ job: "execute_payment", intent_id }` | 1 per retry |
 
 On approve, the API fetches all `payroll_intents` for the run and enqueues one message per intent.
 Broadway processes each independently — a failed payment is retried without affecting others.
 
-**`payment-results`** — published by Broadway after each payment attempt, consumed by Ledger + Notifications
+**`payment-results`** — published by the Webhook Handler when the provider responds
 
 | Trigger | Message | Quantity |
 |---------|---------|----------|
-| Payment succeeded | `{ intent_id, status: "completed" }` | 1 per employee |
-| Payment failed (max retries) | `{ intent_id, status: "failed" }` | 1 per employee |
+| Provider webhook: success | `{ intent_id, status: "completed" }` | 1 per employee |
+| Provider webhook: failed | `{ intent_id, status: "failed" }` | 1 per attempt |
+| Reconciliation job: resolved | `{ intent_id, status: "completed" | "failed" }` | 1 per resolved intent |
+
+### Why the webhook only enqueues
+
+Real payment providers (Wise, Stripe Payouts) expect a `200` response within ~5 seconds or they retry the webhook. Doing DB writes inside the request risks timeouts under load. The webhook handler only enqueues the result to `payment-results` and returns immediately — ResultsWorker does the actual work.
 
 ### Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Web framework | Phoenix |
-| Background jobs / queue consumer | Broadway |
-| Queue (local dev) | ElasticMQ (SQS-compatible) via Floci |
+| Queue consumer | Broadway |
+| Queue (local dev) | ElasticMQ (SQS-compatible) |
+| Queue (production) | AWS SQS |
 | Database | PostgreSQL (single instance) |
-| Multi-node (optional) | Elixir clustering via libcluster |
+| Reconciliation | Scheduled Task or Oban (planned) |
 
 ### Why this still works at scale later
 
@@ -187,3 +205,4 @@ Full event sourcing for the entire system would mean:
 This is actually how most fintech systems work in practice, including likely Remote.
 Full event sourcing is more common in systems where replaying history is a core feature
 (e.g. accounting systems, blockchain).
+

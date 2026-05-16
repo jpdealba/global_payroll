@@ -1,18 +1,51 @@
-# GlobalPayroll
+# Global Payroll
 
-To start your Phoenix server:
+Backend system for paying employees across multiple countries. Handles tax calculation, payroll run orchestration, and async payment execution via a real queue (SQS-compatible).
 
-* Run `mix setup` to install and setup dependencies
-* Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+## Local setup
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+```bash
+# Start infrastructure (Postgres, ElasticMQ, Adminer)
+docker compose up -d
 
-Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
+# Install deps and create/migrate DB
+mix setup
 
-## Learn more
+# Start the server
+mix phx.server
+```
 
-* Official website: https://www.phoenixframework.org/
-* Guides: https://hexdocs.pm/phoenix/overview.html
-* Docs: https://hexdocs.pm/phoenix
-* Forum: https://elixirforum.com/c/phoenix-forum
-* Source: https://github.com/phoenixframework/phoenix
+Services available after `docker compose up`:
+
+| Service | URL |
+|---------|-----|
+| API | http://localhost:4000 |
+| DB UI (Adminer) | http://localhost:8080 |
+| SQS API | http://localhost:9324 |
+| SQS UI | http://localhost:9325 |
+
+Adminer login: System=PostgreSQL, Server=postgres, User=postgres, Password=postgres, DB=global_payroll_dev
+
+## Before committing
+
+```bash
+mix precommit
+```
+
+Runs: `compile --warning-as-errors`, `deps.unlock --unused`, `format`, `test`.
+
+## Project docs
+
+| Doc | Content |
+|-----|---------|
+| `Docs/1- REQUIREMENTS.md` | Functional and non-functional requirements |
+| `Docs/1.5- SEQUENCE.md` | Sequence diagrams for main flows |
+| `Docs/3- API DESIGN.md` | REST resource design |
+| `Docs/4- ARCHITECTURE.md` | Full-scale design + implementation architecture + next steps |
+
+## Key design decisions
+
+- **Async payments** — Broadway consumes `payroll-jobs`, sends instruction to provider, marks intent as `processing`. Provider calls webhook → webhook enqueues to `payment-results` → second Broadway consumer records the outcome.
+- **Ledger is append-only** — company balance is never stored as a field; it is derived from `company_transactions`.
+- **Idempotency via `guard_already_settled`** — prevents double processing on SQS message redelivery.
+- **No Redis yet** — SQS visibility timeout handles concurrency. Redis distributed lock is deferred until Broadway consumer is implemented and profiled.

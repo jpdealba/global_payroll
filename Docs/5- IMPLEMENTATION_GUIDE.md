@@ -217,12 +217,12 @@ Task.start(fn -> Payroll.calculate(run_id) end)
 
 Maneja dos tipos de mensaje:
 
+| job                 | Acción                                                                    | Concurrencia                                               |
+| ------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `calculate_payroll` | Calcula net pay por employee, crea intents                                | `Task.async_stream` sobre la lista de employees            |
+| `execute_payment`   | Envía instrucción al proveedor, marca intent como `processing`            | Broadway procesa N mensajes en paralelo (uno por employee) |
 
-| job                 | Acción                                                             | Concurrencia                                               |
-| ------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `calculate_payroll` | Calcula net pay por employee, crea intents                         | `Task.async_stream` sobre la lista de employees            |
-| `execute_payment`   | Ejecuta un pago individual, publica resultado en `payment-results` | Broadway procesa N mensajes en paralelo (uno por employee) |
-
+El worker **no publica** a `payment-results` — eso lo hace el webhook handler cuando el proveedor responde.
 
 Estructura básica:
 
@@ -246,7 +246,7 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
         Payroll.calculate(run_id)
 
       %{"job" => "execute_payment", "intent_id" => intent_id} ->
-        Payments.execute(intent_id)
+        Payments.execute_payment(intent_id)
     end
 
     message
@@ -254,14 +254,31 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
 end
 ```
 
-### 16. `ResultsWorker` — consume `payment-results`
+### 16. Webhook handler — recibe respuesta del proveedor
 
+El proveedor llama a `POST /webhooks/payment` cuando el pago se resuelve. El handler solo encola a `payment-results` y responde `200` inmediatamente — sin tocar la DB.
 
-| status      | Acción                                           |
-| ----------- | ------------------------------------------------ |
-| `completed` | `Ledger.record_deduction(intent_id)` + notificar |
-| `failed`    | `Ledger.record_refund(intent_id)` + notificar    |
+```elixir
+def handle_webhook(conn, %{"intent_id" => intent_id, "status" => status}) do
+  ExAws.SQS.send_message("payment-results", Jason.encode!(%{intent_id: intent_id, status: status}))
+  |> ExAws.request!()
 
+  send_resp(conn, 200, "ok")
+end
+```
+
+El proveedor reintenta el webhook si no recibe `200` en ~5 segundos — por eso no hacemos trabajo pesado aquí.
+
+### 17. `ResultsWorker` — consume `payment-results`
+
+| status      | Acción                                                              |
+| ----------- | ------------------------------------------------------------------- |
+| `completed` | `Ledger.payroll_deduction(...)` + marcar intent completed           |
+| `failed`    | retry_count < 3 → re-encolar a `payroll-jobs` / si no → `Ledger.refund(...)` |
+
+### 18. Reconciliation job
+
+Busca intents en `processing` con más de X minutos sin actualizar y consulta al proveedor por su estado. Cubre el caso donde el webhook nunca llega.
 
 **Verificar:** Publicar mensaje de prueba en `payroll-jobs` desde iex, confirmar que Broadway lo procesa y actualiza el estado del run.
 
@@ -297,6 +314,16 @@ Migrations → Schemas → Companies → Taxes → Employees
                                               │
                                            Payroll → Payments
                                                           │
-                                                       Workers → API
+                                              ┌───────────┘
+                                              │
+                                        PayrollWorker (Broadway)
+                                              │
+                                        Webhook Handler
+                                              │
+                                        ResultsWorker (Broadway)
+                                              │
+                                        Reconciliation Job
+                                              │
+                                            API
 ```
 

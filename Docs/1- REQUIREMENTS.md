@@ -49,14 +49,13 @@ and payment execution.
 - Every state transition is recorded with a timestamp for audit purposes.
 
 ### Payments
-- Before calculating, the system verifies the company has enough balance to cover total net salaries + platform fees. If not, the run fails immediately.
-- Upon approval, the company balance is debited by the total run cost.
-- The system sends payment instructions to the payment provider (mocked).
-- Each payment is tracked individually (one per employee per run).
+- Before executing payments, the system verifies the company has enough balance to cover total net salaries + platform fees. If not, the run fails immediately.
+- Each payment is tracked individually — one per employee per run.
 - If a payment fails, it is retried up to 3 times before being marked as failed.
 - If a payment ultimately fails, the reserved funds for that employee are returned to the company balance.
 - A failed payment does not cancel the rest of the run — other employees still get paid.
-- The system guarantees idempotency: the same payment is never executed twice.
+- The system guarantees idempotency: the same payment is never executed twice, even if the system crashes and recovers mid-run.
+- Payments are executed asynchronously — the system must handle cases where the provider takes time to confirm or never responds.
 
 ### Invoicing
 - After a payroll run is approved, the system generates one invoice per company.
