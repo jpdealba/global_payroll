@@ -8,7 +8,7 @@
 # │                                              │
 # │  Adminer login:                              │
 # │    System:   PostgreSQL                      │
-# │    Server:   postgres                        │
+# │    Server:   host.docker.internal                        │
 # │    User:     postgres                        │
 # │    Password: postgres                        │
 # │    Database: global_payroll_dev              │
