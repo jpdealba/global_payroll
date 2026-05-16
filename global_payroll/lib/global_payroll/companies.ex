@@ -32,4 +32,12 @@ defmodule GlobalPayroll.Companies do
     |> select([t], coalesce(sum(t.amount), ^Decimal.new("0")))
     |> Repo.one()
   end
+
+  def list_transactions(company_id, cursor \\ nil, per_page \\ 20) do
+    CompanyTransaction
+    |> where([t], t.company_id == ^company_id)
+    |> Pagination.paginate(cursor, per_page)
+    |> Repo.all()
+    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
+  end
 end
