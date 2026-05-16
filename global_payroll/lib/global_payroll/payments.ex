@@ -41,7 +41,7 @@ defmodule GlobalPayroll.Payments do
       |> PayrollIntent.changeset(%{idempotency_key: key})
       |> Repo.update!()
 
-    result = MockPaymentProvider.call(updated_intent)
+    result = GlobalPayroll.Payments.MockPaymentProvider.call(updated_intent)
     record_attempt(intent, attempt_number, result)
 
     case result do
