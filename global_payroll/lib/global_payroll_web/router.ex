@@ -7,6 +7,31 @@ defmodule GlobalPayrollWeb.Router do
 
   scope "/api", GlobalPayrollWeb do
     pipe_through :api
+
+    resources "/companies", CompanyController, only: [:index, :create, :update]
+
+    get "/employees", EmployeeController, :index
+    post "/employees", EmployeeController, :create
+    put "/employees/:id", EmployeeController, :update
+
+    get "/payroll-runs", PayrollRunController, :index
+    post "/payroll-runs", PayrollRunController, :create
+    get "/payroll-runs/:id", PayrollRunController, :show
+    post "/payroll-runs/:id/start", PayrollRunController, :start
+    post "/payroll-runs/:id/approve", PayrollRunController, :approve
+    post "/payroll-runs/:id/cancel", PayrollRunController, :cancel
+    get "/payroll-runs/:id/intents", PayrollRunController, :list_intents
+
+    get "/country-tax-rules", CountryTaxRuleController, :index
+    put "/country-tax-rules/:id", CountryTaxRuleController, :update
+
+    get "/payment-methods", PaymentMethodController, :index
+    post "/payment-methods", PaymentMethodController, :create
+    put "/payment-methods/:id", PaymentMethodController, :update
+    delete "/payment-methods/:id", PaymentMethodController, :delete
+
+    get "/companies/:company_id/transactions", CompanyTransactionController, :index
+    post "/companies/:company_id/deposit", CompanyTransactionController, :deposit
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
