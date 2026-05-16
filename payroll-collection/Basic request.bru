@@ -1,0 +1,15 @@
+meta {
+  name: Basic request
+  type: http
+  seq: 4
+}
+
+get {
+  url: https://localhost:4000/api
+  body: none
+  auth: inherit
+}
+
+headers {
+  Authorization: {{token}}
+}
