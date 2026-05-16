@@ -1,0 +1,22 @@
+meta {
+  name: Update Country Tax Rule
+  type: http
+  seq: 12
+}
+
+put {
+  url: http://localhost:4000/api/country-tax-rules/:id
+  body: json
+  auth: none
+}
+
+params:path {
+  id: <country_tax_rule_id>
+}
+
+body:json {
+  {
+    "income_tax_rate": "0.15",
+    "social_security_rate": "0.07"
+  }
+}

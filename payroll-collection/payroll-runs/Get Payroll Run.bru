@@ -1,0 +1,15 @@
+meta {
+  name: Get Payroll Run
+  type: http
+  seq: 15
+}
+
+get {
+  url: http://localhost:4000/api/payroll-runs/:id
+  body: none
+  auth: none
+}
+
+params:path {
+  id: <payroll_run_id>
+}

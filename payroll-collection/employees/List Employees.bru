@@ -1,0 +1,16 @@
+meta {
+  name: List Employees
+  type: http
+  seq: 4
+}
+
+get {
+  url: http://localhost:4000/api/employees?company_id=0e0a5b89-ff28-4253-80b0-aa5852068364
+  body: none
+  auth: none
+}
+
+params:query {
+  company_id: 0e0a5b89-ff28-4253-80b0-aa5852068364
+  ~cursor: 
+}

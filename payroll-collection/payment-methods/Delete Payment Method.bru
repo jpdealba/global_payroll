@@ -1,0 +1,15 @@
+meta {
+  name: Delete Payment Method
+  type: http
+  seq: 10
+}
+
+delete {
+  url: http://localhost:4000/api/payment-methods/:id
+  body: none
+  auth: none
+}
+
+params:path {
+  id: <payment_method_id>
+}

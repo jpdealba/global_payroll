@@ -1,0 +1,21 @@
+meta {
+  name: Update Employee
+  type: http
+  seq: 6
+}
+
+put {
+  url: http://localhost:4000/api/employees/:id
+  body: json
+  auth: none
+}
+
+params:path {
+  id: <employee_id>
+}
+
+body:json {
+  {
+    "gross_salary": "5500.00"
+  }
+}

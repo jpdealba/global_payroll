@@ -1,0 +1,22 @@
+meta {
+  name: Create Payment Method
+  type: http
+  seq: 8
+}
+
+post {
+  url: http://localhost:4000/api/payment-methods
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "employee_id": "5ea9098e-9a31-46cd-888d-0ef2950bfb97",
+    "bank_name": "BBVA",
+    "account_holder": "Jane Doe",
+    "account_number": "012345678901",
+    "bank_code": "006",
+    "is_default": true
+  }
+}

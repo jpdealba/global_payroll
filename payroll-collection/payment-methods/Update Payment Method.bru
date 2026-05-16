@@ -1,0 +1,21 @@
+meta {
+  name: Update Payment Method
+  type: http
+  seq: 9
+}
+
+put {
+  url: http://localhost:4000/api/payment-methods/:id
+  body: json
+  auth: none
+}
+
+params:path {
+  id: <payment_method_id>
+}
+
+body:json {
+  {
+    "is_default": true
+  }
+}

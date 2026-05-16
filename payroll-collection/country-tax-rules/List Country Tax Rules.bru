@@ -1,0 +1,15 @@
+meta {
+  name: List Country Tax Rules
+  type: http
+  seq: 11
+}
+
+get {
+  url: http://localhost:4000/api/country-tax-rules
+  body: none
+  auth: none
+}
+
+params:query {
+  ~cursor:
+}
