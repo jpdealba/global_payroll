@@ -14,6 +14,8 @@ defmodule GlobalPayroll.Payrolls.PayrollIntent do
     field(:status, :string, default: "pending")
     field(:error, :string)
     field(:retry_count, :integer, default: 0)
+    field(:idempotency_key, :string)
+    field(:provider_payment_id, :string)
     belongs_to(:company, GlobalPayroll.Companies.Company)
     belongs_to(:payroll_run, GlobalPayroll.Payrolls.PayrollRun)
     belongs_to(:employee, GlobalPayroll.Employees.Employee)
@@ -37,7 +39,9 @@ defmodule GlobalPayroll.Payrolls.PayrollIntent do
       :platform_fee,
       :status,
       :error,
-      :retry_count
+      :retry_count,
+      :idempotency_key,
+      :provider_payment_id
     ])
     |> validate_required([
       :company_id,
@@ -52,5 +56,6 @@ defmodule GlobalPayroll.Payrolls.PayrollIntent do
     |> validate_inclusion(:status, ["pending", "processing", "completed", "failed"])
     |> validate_number(:retry_count, greater_than_or_equal_to: 0, less_than_or_equal_to: 3)
     |> unique_constraint([:payroll_run_id, :employee_id])
+    |> unique_constraint(:idempotency_key)
   end
 end

@@ -127,11 +127,17 @@ One record per employee per run. Represents the individual payment to one employ
 | status | enum | `pending`, `processing`, `completed`, `failed` |
 | error | string | nullable — stores error message if failed |
 | retry_count | integer | default 0, max 3 |
+| idempotency_key | string | Generated before calling the provider. Format: `"intent-{id}-attempt-{retry_count}"`. Sent to provider on every call — guarantees that a crash-and-retry does not produce a double payment. |
+| provider_payment_id | string | nullable — ID returned by the provider once the payment is accepted. Used for reconciliation. |
 | inserted_at | datetime | |
 | updated_at | datetime | |
 
 **Constraints:**
 - Unique on `(payroll_run_id, employee_id)` — prevents paying the same employee twice in a run
+- Unique on `idempotency_key` — database-level guard against duplicate provider calls
+
+**Why `idempotency_key` includes `retry_count`:**
+Each retry is a new payment attempt — the provider should actually try again, not return the cached result of the previous failure. Using `intent-{id}-attempt-{retry_count}` gives each attempt its own key while still protecting against crash-and-replay within the same attempt.
 
 **Why snapshot gross_salary instead of reading from employee?**
 If an employee's salary changes next month, it must not alter a past payroll record. The intent stores what was true at the moment of the run.
@@ -225,4 +231,5 @@ companies ──< employees ──< payment_methods
 - **Balance uses a ledger table (`company_transactions`).** Append-only inserts are concurrent-safe — no two writes conflict the way a single `UPDATE balance = balance - X` would. Full audit history is free.
 - **Salary snapshot on payroll_intent** protects historical accuracy — reads from employee at run time, never after.
 - **Unique constraints on (company_id, pay_period) and (payroll_run_id, employee_id)** are the database-level idempotency guarantees. Application logic alone is not enough.
+- **`idempotency_key` on `payroll_intents`** is the critical guard against double payments in a distributed system. Generated before calling the provider and sent with every request — if the worker crashes after sending but before saving state, the retry sends the same key and the provider deduplicates it.
 - **Indexes needed:** `company_id` on employees, `payroll_run_id` on payroll_intents, `employee_id` on payslips.

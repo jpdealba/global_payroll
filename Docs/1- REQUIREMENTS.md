@@ -54,12 +54,13 @@ and payment execution.
 - If a payment fails, it is retried up to 3 times before being marked as failed.
 - If a payment ultimately fails, the reserved funds for that employee are returned to the company balance.
 - A failed payment does not cancel the rest of the run — other employees still get paid.
-- The system guarantees idempotency: the same payment is never executed twice, even if the system crashes and recovers mid-run.
+- The system guarantees idempotency: the same payment is never executed twice, even if the system crashes after sending the payment instruction but before recording the result. This is enforced via a per-attempt idempotency key sent to the provider on every call.
 - Payments are executed asynchronously — the system must handle cases where the provider takes time to confirm or never responds.
 
 ### Invoicing
-- After a payroll run is approved, the system generates one invoice per company.
-- The invoice includes: total gross salaries, total taxes withheld, and a flat platform fee of $599 per employee.
+- After all payments in a run are settled (completed or failed), the system generates one invoice per company.
+- The invoice reflects only the payments that succeeded — failed payments are excluded since their funds were already refunded.
+- The invoice includes: total gross salaries, total taxes withheld, and a flat platform fee of $599 per successfully paid employee.
 - The invoice is immutable once generated — corrections require a new run or a credit note.
 - Invoice status starts as `unpaid` and transitions to `paid` when the company settles it.
 

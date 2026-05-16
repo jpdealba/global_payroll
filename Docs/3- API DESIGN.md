@@ -19,7 +19,7 @@
 | Company | { id, name, country, billing_email, balance (computed), status, inserted_at, updated_at } |
 | Employee | { id, company_id, country_tax_id, name, email, gross_salary, status, inserted_at, updated_at } |
 | Payroll Run | { id, company_id, pay_period, status, error, total_amount, ran_at, inserted_at, updated_at } |
-| Payroll Intent | { id, payroll_run_id, employee_id, gross_salary, income_tax, social_security, net_salary, platform_fee, status, error, retry_count, inserted_at, updated_at } |
+| Payroll Intent | { id, payroll_run_id, employee_id, gross_salary, income_tax, social_security, net_salary, platform_fee, status, error, retry_count, provider_payment_id, inserted_at, updated_at } |
 | Payslip | { id, payroll_intent_id, employee_id, pay_period, gross_salary, income_tax, social_security, net_salary, generated_at, inserted_at } |
 | Invoice | { id, company_id, payroll_run_id, total_gross_salaries, total_taxes_withheld, total_platform_fees, total_amount, status, issued_at, paid_at, inserted_at, updated_at } |
 | Country Tax Rule | { id, country_code, country_name, income_tax_rate, social_security_rate, currency, inserted_at } |

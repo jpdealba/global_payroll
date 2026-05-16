@@ -15,12 +15,15 @@ defmodule GlobalPayroll.Repo.Migrations.CreatePayrollIntents do
       add :status, :string, null: false, default: "pending"  # pending | processing | completed | failed
       add :error, :string                    # nullable — error message if failed
       add :retry_count, :integer, null: false, default: 0
+      add :idempotency_key, :string          # generated before calling provider, format: "intent-{id}-attempt-{retry_count}"
+      add :provider_payment_id, :string      # nullable — ID returned by provider, used for reconciliation
 
       timestamps()
     end
 
     # prevents paying the same employee twice in a run
     create unique_index(:payroll_intents, [:payroll_run_id, :employee_id])
+    create unique_index(:payroll_intents, [:idempotency_key])
     create index(:payroll_intents, [:payroll_run_id])
   end
 end
