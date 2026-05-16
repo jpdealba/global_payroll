@@ -6,7 +6,7 @@ defmodule GlobalPayroll.Payrolls do
   alias GlobalPayroll.{Repo, Companies}
 
   # Flat fee charged to the company per employee on every payroll run.
-  @platform_fee Decimal.new("599")
+  @platform_fee Decimal.new("29")
 
   # The state machine — each state can only move forward to the next one.
   # Any other transition is rejected before touching the database.
@@ -60,6 +60,7 @@ defmodule GlobalPayroll.Payrolls do
   #   4. Check balance — if insufficient, mark failed WITHOUT transitioning to calculating
   #   5. Transition to calculating — only happens if everything above passed
   #   6. Write intents + transition to pending_approval in one transaction
+  # TODO: implement chunking of the employees to avoid memory issues
   defp do_calculate(run) do
     with {:ok, employees} <- fetch_active_employees(run.company_id),
          intents_data = build_intents_data(employees),
@@ -142,6 +143,7 @@ defmodule GlobalPayroll.Payrolls do
   defp insert_intents_and_complete(run, intents_data, total) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+    # We need to generate the uuids cause that way we avoid makid a select query to get the id of the intent after the insert
     rows =
       Enum.map(intents_data, fn intent ->
         Map.merge(intent, %{
@@ -157,11 +159,14 @@ defmodule GlobalPayroll.Payrolls do
 
     Multi.new()
     |> Multi.insert_all(:intents, PayrollIntent, rows)
-    |> Multi.update(:run, PayrollRun.changeset(run, %{
-      status: "pending_approval",
-      total_amount: total,
-      ran_at: DateTime.utc_now()
-    }))
+    |> Multi.update(
+      :run,
+      PayrollRun.changeset(run, %{
+        status: "pending_approval",
+        total_amount: total,
+        ran_at: DateTime.utc_now()
+      })
+    )
     |> Repo.transaction()
     |> case do
       {:ok, %{run: run}} -> {:ok, run}
