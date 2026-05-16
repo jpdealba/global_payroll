@@ -3,7 +3,7 @@ defmodule GlobalPayroll.Payrolls do
   alias Ecto.Multi
   alias GlobalPayroll.Payrolls.{PayrollRun, PayrollIntent}
   alias GlobalPayroll.Employees.Employee
-  alias GlobalPayroll.{Repo, Companies}
+  alias GlobalPayroll.{Pagination, Repo, Companies}
 
   # Flat fee charged to the company per employee on every payroll run.
   @platform_fee Decimal.new("29")
@@ -31,10 +31,37 @@ defmodule GlobalPayroll.Payrolls do
     |> Repo.insert()
   end
 
+  def list_runs(company_id, cursor \\ nil, per_page \\ 20) do
+    PayrollRun
+    |> where([r], r.company_id == ^company_id)
+    |> Pagination.paginate(cursor, per_page)
+    |> Repo.all()
+    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
+  end
+
   def get_run(id) do
     case Repo.get(PayrollRun, id) do
       nil -> {:error, :not_found}
       run -> {:ok, run}
+    end
+  end
+
+  def list_intents(run_id) do
+    PayrollIntent
+    |> where([i], i.payroll_run_id == ^run_id)
+    |> Repo.all()
+  end
+
+  def approve_run(run_id) do
+    with {:ok, run} <- get_run(run_id),
+         :ok <- validate_transition(run.status, "approved") do
+      transition(run, "approved")
+    end
+  end
+
+  def cancel_run(run_id) do
+    with {:ok, run} <- get_run(run_id) do
+      mark_failed(run, "cancelled")
     end
   end
 
