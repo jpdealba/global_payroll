@@ -26,6 +26,7 @@ defmodule GlobalPayroll.Payments do
   # Broadway may redeliver a message if the worker crashes after processing but before acking.
   defp guard_already_settled(%{status: status}) when status in ["completed", "failed"],
     do: {:error, :already_settled}
+
   defp guard_already_settled(_), do: :ok
 
   # Calls the mock provider and records the attempt.
@@ -33,20 +34,33 @@ defmodule GlobalPayroll.Payments do
   # On failure: retries up to @max_retries. After that, marks failed and records a refund.
   defp attempt_payment(intent) do
     attempt_number = intent.retry_count + 1
+    key = "intent-#{intent.id}-attempt-#{intent.retry_count}"
+
+    intent
+    |> PayrollIntent.changeset(%{idempotency_key: key})
+    |> Repo.update!()
+
     result = MockPaymentProvider.call(intent)
     record_attempt(intent, attempt_number, result)
 
     case result do
-      :ok -> on_success(intent)
-      {:error, reason} -> on_failure(intent, attempt_number, reason)
+      {:ok, provider_id} ->
+        intent
+        |> PayrollIntent.changeset(%{provider_payment_id: provider_id})
+        |> Repo.update!()
+
+        on_success(intent)
+
+      {:error, reason} ->
+        on_failure(intent, attempt_number, reason)
     end
   end
 
   # Records every attempt in payment_attempts for full audit trail.
   # unique_constraint on (payroll_intent_id, attempt_number) prevents duplicate records.
   defp record_attempt(intent, attempt_number, result) do
-    status = if result == :ok, do: "succeeded", else: "failed"
-    error = if match?({:error, reason}, result), do: elem(result, 1), else: nil
+    status = if match?({:ok, _}, result), do: "succeeded", else: "failed"
+    error = if match?({:error, _}, result), do: elem(result, 1), else: nil
 
     %PaymentAttempt{}
     |> PaymentAttempt.changeset(%{
@@ -97,11 +111,14 @@ defmodule GlobalPayroll.Payments do
   # The refund returns the reserved funds so the company is not charged for a failed payment.
   defp on_max_retries(intent, reason) do
     Multi.new()
-    |> Multi.update(:intent, PayrollIntent.changeset(intent, %{
-      status: "failed",
-      error: reason,
-      retry_count: @max_retries
-    }))
+    |> Multi.update(
+      :intent,
+      PayrollIntent.changeset(intent, %{
+        status: "failed",
+        error: reason,
+        retry_count: @max_retries
+      })
+    )
     |> Multi.run(:ledger, fn _repo, _changes ->
       Ledger.refund(
         intent.company_id,
@@ -122,8 +139,8 @@ end
 # Replace this module with a real HTTP client when integrating with Wise or a bank.
 defmodule GlobalPayroll.Payments.MockPaymentProvider do
   def call(_intent) do
-    if :rand.uniform(10) > 3 do
-      :ok
+    if :rand.uniform(10) > 1 do
+      {:ok, "mock-provider-#{System.unique_integer([:positive])}"}
     else
       {:error, "payment provider timeout"}
     end
