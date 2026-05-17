@@ -243,16 +243,26 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
   def handle_message(_, %{data: data} = message, _) do
     case Jason.decode!(data) do
       %{"job" => "calculate_payroll", "run_id" => run_id} ->
-        Payroll.calculate(run_id)
+        case Payrolls.calculate_run(run_id) do
+          {:ok, _} -> message
+          {:error, reason} -> Broadway.Message.failed(message, inspect(reason))
+        end
 
       %{"job" => "execute_payment", "intent_id" => intent_id} ->
-        Payments.execute_payment(intent_id)
+        case Payments.execute_payment(intent_id) do
+          {:ok, _} -> message
+          {:error, reason} when reason in [:already_settled, :not_found] -> message
+          {:error, reason} -> Broadway.Message.failed(message, inspect(reason))
+        end
     end
-
-    message
   end
 end
 ```
+
+**Nota sobre estados y reintentos:**
+- `draft → calculating` se commitea inmediatamente — la empresa puede ver que el sistema está trabajando.
+- `calculating → pending_approval` + todos los inserts de intents ocurren en una sola transacción. Si falla, el run queda en `calculating`.
+- Un nack de Broadway reencola el mensaje. En el reintento, `calculate_run` acepta `calculating` como estado de entrada y retoma desde ahí limpiamente — seguro porque la transacción de intents es atómica y nunca deja estado parcial.
 
 ### 16. Webhook handler — recibe respuesta del proveedor
 

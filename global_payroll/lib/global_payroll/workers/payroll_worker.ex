@@ -29,8 +29,10 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
   def handle_message(_, message, _) do
     case Jason.decode!(message.data) do
       %{"job" => "calculate_payroll", "run_id" => run_id} ->
-        Payrolls.calculate_run(run_id)
-        message
+        case Payrolls.calculate_run(run_id) do
+          {:ok, _} -> message
+          {:error, reason} -> Broadway.Message.failed(message, inspect(reason))
+        end
 
       %{"job" => "execute_payment", "intent_id" => intent_id} ->
         case Payments.execute_payment(intent_id) do
