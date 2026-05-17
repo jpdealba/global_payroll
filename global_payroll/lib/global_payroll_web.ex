@@ -32,6 +32,7 @@ defmodule GlobalPayrollWeb do
   def live_view do
     quote do
       use Phoenix.LiveView, layout: {GlobalPayrollWeb.Layouts, :app}
+      import GlobalPayrollWeb.Helpers
       unquote(verified_routes())
     end
   end

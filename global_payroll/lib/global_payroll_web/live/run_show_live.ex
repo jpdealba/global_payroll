@@ -12,7 +12,10 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
       {:ok, run} ->
         if connected?(socket), do: schedule_poll_if_needed(run.status)
-        {:ok, load_details(assign(socket, run: run, alert: nil), run)}
+        socket = assign(socket, run: run, alert: nil,
+                        intent_cursor: nil, intent_cursors: [],
+                        payslip_cursor: nil, payslip_cursors: [])
+        {:ok, load_details(socket, run)}
     end
   end
 
@@ -65,21 +68,45 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     end
   end
 
+  def handle_event("intent_next", _params, socket) do
+    prev_stack = [socket.assigns.intent_cursor | socket.assigns.intent_cursors]
+    socket = assign(socket, intent_cursor: socket.assigns.intent_next_cursor, intent_cursors: prev_stack)
+    {:noreply, load_details(socket, socket.assigns.run)}
+  end
+
+  def handle_event("intent_prev", _params, socket) do
+    [prev | rest] = socket.assigns.intent_cursors
+    socket = assign(socket, intent_cursor: prev, intent_cursors: rest)
+    {:noreply, load_details(socket, socket.assigns.run)}
+  end
+
+  def handle_event("payslip_next", _params, socket) do
+    prev_stack = [socket.assigns.payslip_cursor | socket.assigns.payslip_cursors]
+    socket = assign(socket, payslip_cursor: socket.assigns.payslip_next_cursor, payslip_cursors: prev_stack)
+    {:noreply, load_details(socket, socket.assigns.run)}
+  end
+
+  def handle_event("payslip_prev", _params, socket) do
+    [prev | rest] = socket.assigns.payslip_cursors
+    socket = assign(socket, payslip_cursor: prev, payslip_cursors: rest)
+    {:noreply, load_details(socket, socket.assigns.run)}
+  end
+
   defp load_details(socket, run) do
     if run.status in ~w(pending_approval approved paying completed failed) do
-      intents = Payrolls.list_intents(run.id)
-      socket = assign(socket, intents: intents)
+      {intents, intent_next} = Payrolls.list_intents_page(run.id, socket.assigns.intent_cursor)
+      socket = assign(socket, intents: intents, intent_next_cursor: intent_next)
 
       if run.status == "completed" do
-        payslips = Payrolls.list_payslips_by_run(run.id)
+        {payslips, payslip_next} = Payrolls.list_payslips_by_run_page(run.id, socket.assigns.payslip_cursor)
         invoices = Payrolls.list_invoices_by_company(run.company_id)
         invoice = Enum.find(invoices, &(&1.payroll_run_id == run.id))
-        assign(socket, payslips: payslips, invoice: invoice)
+        assign(socket, payslips: payslips, payslip_next_cursor: payslip_next, invoice: invoice)
       else
-        assign(socket, payslips: [], invoice: nil)
+        assign(socket, payslips: [], payslip_next_cursor: nil, invoice: nil)
       end
     else
-      assign(socket, intents: [], payslips: [], invoice: nil)
+      assign(socket, intents: [], intent_next_cursor: nil, payslips: [], payslip_next_cursor: nil, invoice: nil)
     end
   end
 
@@ -126,7 +153,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           <%= if @run.total_amount do %>
             <div class="text-right">
               <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Amount</div>
-              <div class="text-2xl font-bold">$<%= @run.total_amount %></div>
+              <div class="text-2xl font-bold"><%= format_money(@run.total_amount) %></div>
             </div>
           <% end %>
         </div>
@@ -162,7 +189,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
       <%= if @intents != [] do %>
         <div class="mb-6">
           <h2 class="text-lg font-semibold mb-3">
-            Payment Intents (<%= length(@intents) %>)
+            Payment Intents (<%= length(@intents) %><%= if @intent_next_cursor, do: "+" %>)
           </h2>
           <div class="bg-white rounded-lg border overflow-hidden">
             <table class="w-full text-sm">
@@ -182,12 +209,12 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                     <td class="px-4 py-3 font-mono text-xs text-gray-500">
                       <%= String.slice(intent.employee_id, 0, 8) %>…
                     </td>
-                    <td class="px-4 py-3">$<%= intent.gross_salary %></td>
+                    <td class="px-4 py-3"><%= format_money(intent.gross_salary) %></td>
                     <td class="px-4 py-3 text-gray-500">
-                      $<%= Decimal.add(intent.income_tax, intent.social_security) %>
+                      <%= format_money(Decimal.add(intent.income_tax, intent.social_security)) %>
                     </td>
-                    <td class="px-4 py-3 text-gray-500">$<%= intent.platform_fee %></td>
-                    <td class="px-4 py-3 font-semibold">$<%= intent.net_salary %></td>
+                    <td class="px-4 py-3 text-gray-500"><%= format_money(intent.platform_fee) %></td>
+                    <td class="px-4 py-3 font-semibold"><%= format_money(intent.net_salary) %></td>
                     <td class="px-4 py-3">
                       <span class={["px-2 py-1 rounded-full text-xs font-medium", intent_status_badge(intent.status)]}>
                         <%= intent.status %>
@@ -197,13 +224,28 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                 <% end %>
               </tbody>
             </table>
+            <div class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500">
+              <span>Showing <%= length(@intents) %> per page</span>
+              <div class="flex gap-2">
+                <button phx-click="intent_prev" disabled={@intent_cursors == []}
+                        class={["px-3 py-1 rounded border text-sm", if(@intent_cursors == [], do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                  ← Prev
+                </button>
+                <button phx-click="intent_next" disabled={is_nil(@intent_next_cursor)}
+                        class={["px-3 py-1 rounded border text-sm", if(is_nil(@intent_next_cursor), do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                  Next →
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       <% end %>
 
       <%= if @payslips != [] do %>
         <div class="mb-6">
-          <h2 class="text-lg font-semibold mb-3">Payslips (<%= length(@payslips) %>)</h2>
+          <h2 class="text-lg font-semibold mb-3">
+            Payslips (<%= length(@payslips) %><%= if @payslip_next_cursor, do: "+" %>)
+          </h2>
           <div class="bg-white rounded-lg border overflow-hidden">
             <table class="w-full text-sm">
               <thead class="bg-gray-50 text-gray-500 text-left">
@@ -221,14 +263,27 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                     <td class="px-4 py-3 font-mono text-xs text-gray-500">
                       <%= String.slice(slip.employee_id, 0, 8) %>…
                     </td>
-                    <td class="px-4 py-3">$<%= slip.gross_salary %></td>
-                    <td class="px-4 py-3 text-gray-500">$<%= slip.income_tax %></td>
-                    <td class="px-4 py-3 text-gray-500">$<%= slip.social_security %></td>
-                    <td class="px-4 py-3 font-semibold text-green-700">$<%= slip.net_salary %></td>
+                    <td class="px-4 py-3"><%= format_money(slip.gross_salary) %></td>
+                    <td class="px-4 py-3 text-gray-500"><%= format_money(slip.income_tax) %></td>
+                    <td class="px-4 py-3 text-gray-500"><%= format_money(slip.social_security) %></td>
+                    <td class="px-4 py-3 font-semibold text-green-700"><%= format_money(slip.net_salary) %></td>
                   </tr>
                 <% end %>
               </tbody>
             </table>
+            <div class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500">
+              <span>Showing <%= length(@payslips) %> per page</span>
+              <div class="flex gap-2">
+                <button phx-click="payslip_prev" disabled={@payslip_cursors == []}
+                        class={["px-3 py-1 rounded border text-sm", if(@payslip_cursors == [], do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                  ← Prev
+                </button>
+                <button phx-click="payslip_next" disabled={is_nil(@payslip_next_cursor)}
+                        class={["px-3 py-1 rounded border text-sm", if(is_nil(@payslip_next_cursor), do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                  Next →
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       <% end %>
@@ -239,19 +294,19 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div class="p-3 bg-gray-50 rounded">
               <div class="text-gray-500 text-xs mb-1">Gross Salaries</div>
-              <div class="font-semibold">$<%= @invoice.total_gross_salaries %></div>
+              <div class="font-semibold"><%= format_money(@invoice.total_gross_salaries) %></div>
             </div>
             <div class="p-3 bg-gray-50 rounded">
               <div class="text-gray-500 text-xs mb-1">Taxes Withheld</div>
-              <div class="font-semibold">$<%= @invoice.total_taxes_withheld %></div>
+              <div class="font-semibold"><%= format_money(@invoice.total_taxes_withheld) %></div>
             </div>
             <div class="p-3 bg-gray-50 rounded">
               <div class="text-gray-500 text-xs mb-1">Platform Fees</div>
-              <div class="font-semibold">$<%= @invoice.total_platform_fees %></div>
+              <div class="font-semibold"><%= format_money(@invoice.total_platform_fees) %></div>
             </div>
             <div class="p-3 bg-blue-50 rounded border border-blue-200">
               <div class="text-blue-600 text-xs mb-1 font-medium">Total Amount</div>
-              <div class="font-bold text-xl text-blue-700">$<%= @invoice.total_amount %></div>
+              <div class="font-bold text-xl text-blue-700"><%= format_money(@invoice.total_amount) %></div>
             </div>
           </div>
         </div>

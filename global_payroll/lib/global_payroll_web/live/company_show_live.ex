@@ -9,16 +9,25 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
 
       company ->
         {tax_rules, _} = Taxes.list_country_tax_rules()
-        {:ok, load_data(assign(socket, tax_rules: tax_rules, alert: nil), company)}
+        socket = assign(socket, tax_rules: tax_rules, alert: nil,
+                        emp_cursor: nil, emp_cursors: [], emp_next_cursor: nil, emp_total: 0, emp_page: 1)
+        {:ok, load_data(socket, company)}
     end
   end
 
   defp load_data(socket, company) do
-    {employees, _} = Employees.list_employees_by_company(company.id)
-    employees = GlobalPayroll.Repo.preload(employees, :country_tax_rule)
     {runs, _} = Payrolls.list_runs(company.id)
     balance = Companies.get_company_balance(company.id)
-    assign(socket, company: company, balance: balance, employees: employees, runs: runs)
+    socket
+    |> assign(company: company, balance: balance, runs: runs)
+    |> load_employees(company.id, nil, [])
+  end
+
+  defp load_employees(socket, company_id, cursor, prev_cursors) do
+    {employees, next_cursor} = Employees.list_employees_by_company(company_id, cursor)
+    employees = GlobalPayroll.Repo.preload(employees, :country_tax_rule)
+    total = Employees.count_employees_by_company(company_id)
+    assign(socket, employees: employees, emp_total: total, emp_cursor: cursor, emp_cursors: prev_cursors, emp_next_cursor: next_cursor, emp_page: length(prev_cursors) + 1)
   end
 
   def handle_event("deposit", %{"amount" => amount}, socket) do
@@ -58,8 +67,8 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
 
     with {:ok, employee} <- Employees.create_employee(employee_attrs),
          {:ok, _} <- Employees.add_payment_method(employee.id, payment_method_attrs) do
-      {employees, _} = Employees.list_employees_by_company(company.id)
-      {:noreply, assign(socket, employees: employees, alert: {:ok, "Employee added"})}
+      socket = load_employees(socket, company.id, nil, [])
+      {:noreply, assign(socket, alert: {:ok, "Employee added"})}
     else
       {:error, %Ecto.Changeset{} = cs} ->
         {:noreply, assign(socket, alert: {:error, changeset_errors(cs)})}
@@ -80,6 +89,17 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
       {:error, %Ecto.Changeset{} = cs} ->
         {:noreply, assign(socket, alert: {:error, changeset_errors(cs)})}
     end
+  end
+
+  def handle_event("emp_next", _params, socket) do
+    next = socket.assigns.emp_next_cursor
+    prev_stack = [socket.assigns.emp_cursor | socket.assigns.emp_cursors]
+    {:noreply, load_employees(socket, socket.assigns.company.id, next, prev_stack)}
+  end
+
+  def handle_event("emp_prev", _params, socket) do
+    [prev | rest] = socket.assigns.emp_cursors
+    {:noreply, load_employees(socket, socket.assigns.company.id, prev, rest)}
   end
 
   defp changeset_errors(changeset) do
@@ -111,7 +131,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
       <div class="grid grid-cols-2 gap-6 mb-8">
         <div class="bg-white rounded-lg border p-5">
           <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Balance</div>
-          <div class="text-3xl font-bold">$<%= @balance %></div>
+          <div class="text-3xl font-bold"><%= format_money(@balance) %></div>
         </div>
         <div class="bg-white rounded-lg border p-5">
           <div class="text-xs text-gray-500 uppercase tracking-wide mb-3">Deposit Funds</div>
@@ -127,7 +147,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
 
       <div class="mb-8">
         <h2 class="text-lg font-semibold mb-3">
-          Employees (<%= length(@employees) %>)
+          Employees (<%= format_number(@emp_total) %>)
         </h2>
 
         <details class="mb-3 bg-white rounded-lg border">
@@ -193,7 +213,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
                   <td class="px-4 py-3 font-medium"><%= emp.name %></td>
                   <td class="px-4 py-3 text-gray-600"><%= emp.email %></td>
                   <td class="px-4 py-3 text-gray-600"><%= emp.country_tax_rule && emp.country_tax_rule.country_code %></td>
-                  <td class="px-4 py-3">$<%= emp.gross_salary %></td>
+                  <td class="px-4 py-3"><%= format_money(emp.gross_salary) %></td>
                   <td class="px-4 py-3">
                     <span class={["px-2 py-1 rounded-full text-xs font-medium", emp_status_badge(emp.status)]}>
                       <%= emp.status %>
@@ -203,6 +223,26 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
               <% end %>
             </tbody>
           </table>
+          <div class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500">
+            <% per_page = 20 %>
+            <% from = (@emp_page - 1) * per_page + 1 %>
+            <% to = (@emp_page - 1) * per_page + length(@employees) %>
+            <% total_pages = ceil(@emp_total / per_page) %>
+            <span>
+              <%= format_number(from) %>–<%= format_number(to) %> of <%= format_number(@emp_total) %>
+              · Page <%= @emp_page %> of <%= total_pages %>
+            </span>
+            <div class="flex gap-2">
+              <button phx-click="emp_prev" disabled={@emp_cursors == []}
+                      class={["px-3 py-1 rounded border text-sm", if(@emp_cursors == [], do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                ← Prev
+              </button>
+              <button phx-click="emp_next" disabled={is_nil(@emp_next_cursor)}
+                      class={["px-3 py-1 rounded border text-sm", if(is_nil(@emp_next_cursor), do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                Next →
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -244,7 +284,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
                       <%= run.status %>
                     </span>
                   </td>
-                  <td class="px-4 py-3"><%= if run.total_amount, do: "$#{run.total_amount}" %></td>
+                  <td class="px-4 py-3"><%= if run.total_amount, do: format_money(run.total_amount) %></td>
                   <td class="px-4 py-3 text-gray-400 text-xs">
                     <%= if run.ran_at, do: Calendar.strftime(run.ran_at, "%b %d %H:%M") %>
                   </td>
