@@ -40,16 +40,13 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
   def handle_event("approve", _params, socket) do
     run = socket.assigns.run
 
-    case Payrolls.approve_run(run.id) do
-      {:ok, approved_run} ->
-        approved_run.id
-        |> Payrolls.list_intent_ids()
-        |> Queue.enqueue_execute_payments()
-
-        schedule_poll_if_needed(approved_run.status)
-        socket = load_details(assign(socket, run: approved_run), approved_run)
-        {:noreply, assign(socket, alert: {:ok, "Approved — payments processing"})}
-
+    with {:ok, approved_run} <- Payrolls.approve_run(run.id),
+         _ <- approved_run.id |> Payrolls.list_intent_ids() |> Queue.enqueue_execute_payments(),
+         {:ok, paying_run} <- Payrolls.start_paying(approved_run.id) do
+      schedule_poll_if_needed(paying_run.status)
+      socket = load_details(assign(socket, run: paying_run), paying_run)
+      {:noreply, assign(socket, alert: {:ok, "Approved — payments processing"})}
+    else
       {:error, reason} ->
         {:noreply, assign(socket, alert: {:error, inspect(reason)})}
     end

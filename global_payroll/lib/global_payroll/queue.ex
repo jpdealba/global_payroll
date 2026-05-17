@@ -26,7 +26,8 @@ defmodule GlobalPayroll.Queue do
         |> ExAws.request!()
       end,
       max_concurrency: 50,
-      ordered: false
+      ordered: false,
+      timeout: 30_000
     )
     |> Stream.run()
   end

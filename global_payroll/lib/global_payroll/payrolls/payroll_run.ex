@@ -11,6 +11,7 @@ defmodule GlobalPayroll.Payrolls.PayrollRun do
     field(:error, :string)
     field(:total_amount, :decimal)
     field(:ran_at, :utc_datetime)
+    field(:pending_count, :integer)
     has_many(:payroll_intents, GlobalPayroll.Payrolls.PayrollIntent)
     has_one(:invoice, GlobalPayroll.Payrolls.Invoice)
     belongs_to(:company, GlobalPayroll.Companies.Company)
@@ -21,7 +22,7 @@ defmodule GlobalPayroll.Payrolls.PayrollRun do
   @doc false
   def changeset(payroll_run, attrs) do
     payroll_run
-    |> cast(attrs, [:company_id, :pay_period, :status, :error, :total_amount, :ran_at])
+    |> cast(attrs, [:company_id, :pay_period, :status, :error, :total_amount, :ran_at, :pending_count])
     |> validate_required([:company_id, :pay_period])
     |> validate_inclusion(:status, [
       "draft",

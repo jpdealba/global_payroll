@@ -139,7 +139,7 @@ defmodule GlobalPayroll.Payments do
     |> Repo.transaction()
     |> case do
       {:ok, _} ->
-        maybe_close_run(run)
+        decrement_and_maybe_close(run)
         {:ok, :completed}
 
       {:error, _step, reason, _} ->
@@ -185,7 +185,7 @@ defmodule GlobalPayroll.Payments do
     |> case do
       {:ok, _} ->
         run = Repo.get!(PayrollRun, intent.payroll_run_id)
-        maybe_close_run(run)
+        decrement_and_maybe_close(run)
         {:error, :failed}
 
       {:error, _step, reason, _} ->
@@ -193,17 +193,12 @@ defmodule GlobalPayroll.Payments do
     end
   end
 
-  # Checks if every intent in the run has reached a terminal state using a COUNT query —
-  # avoids loading all intents into memory, which is critical at scale.
-  defp maybe_close_run(run) do
-    pending_count =
-      Repo.one(
-        from i in PayrollIntent,
-          where: i.payroll_run_id == ^run.id and i.status not in ["completed", "failed"],
-          select: count(i.id)
-      )
+  defp decrement_and_maybe_close(run) do
+    {1, [remaining]} =
+      from(r in PayrollRun, where: r.id == ^run.id, select: r.pending_count)
+      |> Repo.update_all(inc: [pending_count: -1])
 
-    if pending_count == 0, do: generate_invoice(run)
+    if remaining == 0, do: generate_invoice(run)
   end
 
   # Computes all invoice totals with a single aggregate query on the DB side —

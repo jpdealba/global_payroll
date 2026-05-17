@@ -9,19 +9,15 @@ defmodule GlobalPayroll.Workers.PaymentResultsWorker do
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
       producer: [
-        module:
-          {BroadwaySQS.Producer,
-           queue_url: @queue_url,
-           config: [
-             access_key_id: "local",
-             secret_access_key: "local",
-             region: "us-east-1",
-             sqs: [scheme: "http://", host: "localhost", port: 9324]
-           ]}
-      ],
-      processors: [
-        default: [concurrency: 10]
-      ]
+          module: {BroadwaySQS.Producer, queue_url: @queue_url, receive_interval: 100},
+          concurrency: 50
+        ],
+        processors: [
+          default: [concurrency: 50]
+        ],
+        batchers: [
+          default: [batch_size: 500, batch_timeout: 5_000, concurrency: 10]
+        ]
     )
   end
 
@@ -46,4 +42,8 @@ defmodule GlobalPayroll.Workers.PaymentResultsWorker do
         Broadway.Message.failed(message, "unknown event format")
     end
   end
+
+  # Required when batchers are configured; BroadwaySQS acks messages in batches here.
+  @impl Broadway
+  def handle_batch(_batcher, messages, _batch_info, _context), do: messages
 end

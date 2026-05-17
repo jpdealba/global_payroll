@@ -108,6 +108,13 @@ defmodule GlobalPayroll.Payrolls do
     end
   end
 
+  def start_paying(run_id) do
+    with {:ok, run} <- get_run(run_id),
+         :ok <- validate_transition(run.status, "paying") do
+      transition(run, "paying")
+    end
+  end
+
   def cancel_run(run_id) do
     with {:ok, run} <- get_run(run_id) do
       mark_failed(run, "cancelled")
@@ -200,7 +207,7 @@ defmodule GlobalPayroll.Payrolls do
     end)
 
     run
-    |> PayrollRun.changeset(%{status: "pending_approval", total_amount: total, ran_at: now})
+    |> PayrollRun.changeset(%{status: "pending_approval", total_amount: total, ran_at: now, pending_count: length(employee_ids)})
     |> Repo.update()
     |> case do
       {:ok, _} -> {:ok, run}
