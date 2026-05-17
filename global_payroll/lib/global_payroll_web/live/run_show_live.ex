@@ -43,8 +43,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     case Payrolls.approve_run(run.id) do
       {:ok, approved_run} ->
         approved_run.id
-        |> Payrolls.list_intents()
-        |> Enum.map(& &1.id)
+        |> Payrolls.list_intent_ids()
         |> Queue.enqueue_execute_payments()
 
         schedule_poll_if_needed(approved_run.status)

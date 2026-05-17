@@ -54,6 +54,13 @@ defmodule GlobalPayroll.Payrolls do
     |> Repo.all()
   end
 
+  def list_intent_ids(run_id) do
+    PayrollIntent
+    |> where([i], i.payroll_run_id == ^run_id)
+    |> select([i], i.id)
+    |> Repo.all()
+  end
+
   def list_intents_page(run_id, cursor \\ nil, per_page \\ 50) do
     PayrollIntent
     |> where([i], i.payroll_run_id == ^run_id)
@@ -150,48 +157,51 @@ defmodule GlobalPayroll.Payrolls do
     end
   end
 
-  # Streams employees @chunk_size at a time — memory stays bounded regardless of run size.
-  # Each chunk is calculated and inserted independently, avoiding PostgreSQL's bind parameter limit.
-  # Everything runs in one transaction so a mid-run failure rolls all inserts back.
-  # Inserts intents in chunks and transitions to pending_approval atomically.
-  # calculating was already committed before this — if this transaction fails,
-  # the run stays in calculating and Broadway retries safely (see validate_calculable).
+  # Processes employees in independent chunks — no long-held transaction or cursor.
+  # Deletes any existing intents first so retries are safe (idempotent).
+  # Each chunk is a short standalone insert; the final status transition is its own transaction.
   defp insert_intents_in_chunks(run, total) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    Repo.transaction(fn ->
-      tax_rules =
-        from(t in CountryTaxRule,
-          where:
-            t.id in subquery(
-              from e in Employee,
-                where: e.company_id == ^run.company_id and e.status == "active",
-                select: e.country_tax_id
-            )
-        )
-        |> Repo.all()
-        |> Map.new(fn t -> {t.id, t} end)
+    Repo.delete_all(from i in PayrollIntent, where: i.payroll_run_id == ^run.id)
 
+    tax_rules =
+      from(t in CountryTaxRule,
+        where:
+          t.id in subquery(
+            from e in Employee,
+              where: e.company_id == ^run.company_id and e.status == "active",
+              select: e.country_tax_id
+          )
+      )
+      |> Repo.all()
+      |> Map.new(fn t -> {t.id, t} end)
+
+    employee_ids =
       Employee
       |> where([e], e.company_id == ^run.company_id and e.status == "active")
-      |> Repo.stream()
-      |> Stream.chunk_every(@chunk_size)
-      |> Enum.each(fn chunk ->
-        rows =
-          Task.async_stream(
-            chunk,
-            fn e -> build_intent_row(%{e | country_tax_rule: Map.fetch!(tax_rules, e.country_tax_id)}, run, now) end,
-            ordered: false
-          )
-          |> Enum.map(fn {:ok, row} -> row end)
+      |> select([e], e.id)
+      |> Repo.all()
 
-        Repo.insert_all(PayrollIntent, rows)
-      end)
+    employee_ids
+    |> Enum.chunk_every(@chunk_size)
+    |> Enum.each(fn chunk_ids ->
+      rows =
+        Employee
+        |> where([e], e.id in ^chunk_ids)
+        |> Repo.all()
+        |> Task.async_stream(
+          fn e -> build_intent_row(%{e | country_tax_rule: Map.fetch!(tax_rules, e.country_tax_id)}, run, now) end,
+          ordered: false
+        )
+        |> Enum.map(fn {:ok, row} -> row end)
 
-      run
-      |> PayrollRun.changeset(%{status: "pending_approval", total_amount: total, ran_at: now})
-      |> Repo.update!()
+      Repo.insert_all(PayrollIntent, rows)
     end)
+
+    run
+    |> PayrollRun.changeset(%{status: "pending_approval", total_amount: total, ran_at: now})
+    |> Repo.update()
     |> case do
       {:ok, _} -> {:ok, run}
       {:error, reason} -> {:error, reason}

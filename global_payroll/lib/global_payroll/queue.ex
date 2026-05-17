@@ -10,6 +10,10 @@ defmodule GlobalPayroll.Queue do
     send_message(@payment_results, event)
   end
 
+  def enqueue_execute_payment(intent_id) do
+    send_message(@payroll_jobs, %{job: "execute_payment", intent_id: intent_id})
+  end
+
   def enqueue_execute_payments(intent_ids) do
     intent_ids
     |> Enum.map(fn id ->

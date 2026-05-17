@@ -154,7 +154,7 @@ defmodule GlobalPayroll.Payments do
       |> PayrollIntent.changeset(%{retry_count: attempt_number})
       |> Repo.update()
 
-      Queue.enqueue_execute_payments([intent.id])
+      Queue.enqueue_execute_payment(intent.id)
       {:ok, :retrying}
     else
       on_max_retries(intent, reason)
