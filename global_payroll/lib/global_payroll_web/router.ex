@@ -34,6 +34,11 @@ defmodule GlobalPayrollWeb.Router do
     post "/companies/:company_id/deposit", CompanyTransactionController, :deposit
   end
 
+  scope "/webhooks", GlobalPayrollWeb do
+    pipe_through :api
+    post "/payment-provider", PaymentWebhookController, :event
+  end
+
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:global_payroll, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
@@ -49,5 +54,6 @@ defmodule GlobalPayrollWeb.Router do
       live_dashboard "/dashboard", metrics: GlobalPayrollWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
+
   end
 end

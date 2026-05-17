@@ -1,8 +1,13 @@
 defmodule GlobalPayroll.Queue do
   @payroll_jobs Application.compile_env(:global_payroll, [:queues, :payroll_jobs])
+  @payment_results Application.compile_env(:global_payroll, [:queues, :payment_results])
 
   def enqueue_calculate_payroll(run_id) do
     send_message(@payroll_jobs, %{job: "calculate_payroll", run_id: run_id})
+  end
+
+  def enqueue_payment_result(event) do
+    send_message(@payment_results, event)
   end
 
   def enqueue_execute_payments(intent_ids) do

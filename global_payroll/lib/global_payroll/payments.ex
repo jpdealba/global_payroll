@@ -6,6 +6,17 @@ defmodule GlobalPayroll.Payments do
 
   @max_retries 3
 
+  def handle_webhook_event(%{"payment_id" => payment_id, "status" => status} = event) do
+    with {:ok, intent} <- fetch_by_provider_id(payment_id),
+         :ok <- guard_already_settled(intent) do
+      case status do
+        "succeeded" -> on_success(intent)
+        "failed" -> on_max_retries(intent, Map.get(event, "error", "provider reported failure"))
+        _ -> {:error, :unknown_status}
+      end
+    end
+  end
+
   def execute_payment(intent_id) do
     with {:ok, intent} <- fetch_intent(intent_id),
          :ok <- guard_already_settled(intent) do
@@ -17,6 +28,13 @@ defmodule GlobalPayroll.Payments do
 
   defp fetch_intent(id) do
     case Repo.get(PayrollIntent, id) do
+      nil -> {:error, :not_found}
+      intent -> {:ok, intent}
+    end
+  end
+
+  defp fetch_by_provider_id(payment_id) do
+    case Repo.get_by(PayrollIntent, provider_payment_id: payment_id) do
       nil -> {:error, :not_found}
       intent -> {:ok, intent}
     end
