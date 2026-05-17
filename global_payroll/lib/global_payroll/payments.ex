@@ -3,7 +3,7 @@ defmodule GlobalPayroll.Payments do
   alias Ecto.Multi
   alias GlobalPayroll.Payments.PaymentAttempt
   alias GlobalPayroll.Payrolls.{PayrollIntent, PayrollRun, Payslip, Invoice}
-  alias GlobalPayroll.{Repo, Ledger}
+  alias GlobalPayroll.{Repo, Ledger, Queue}
 
   @max_retries 3
 
@@ -51,6 +51,21 @@ defmodule GlobalPayroll.Payments do
   # Calls the mock provider and records the attempt.
   # On success: marks intent completed and records a ledger deduction.
   # On failure: retries up to @max_retries. After that, marks failed and records a refund.
+  # Called by ResultsWorker after dequeuing from payment-results.
+  def process_result(%{"intent_id" => intent_id, "status" => "succeeded"}) do
+    with {:ok, intent} <- fetch_intent(intent_id),
+         :ok <- guard_already_settled(intent) do
+      on_success(intent)
+    end
+  end
+
+  def process_result(%{"intent_id" => intent_id, "status" => "failed", "error" => error}) do
+    with {:ok, intent} <- fetch_intent(intent_id),
+         :ok <- guard_already_settled(intent) do
+      on_failure(intent, intent.retry_count + 1, error)
+    end
+  end
+
   defp attempt_payment(intent) do
     attempt_number = intent.retry_count + 1
     key = "intent-#{intent.id}-attempt-#{intent.retry_count}"
@@ -69,11 +84,13 @@ defmodule GlobalPayroll.Payments do
         |> PayrollIntent.changeset(%{provider_payment_id: provider_id})
         |> Repo.update!()
 
-        on_success(intent)
+        Queue.enqueue_payment_result(%{"intent_id" => intent.id, "status" => "succeeded"})
 
       {:error, reason} ->
-        on_failure(intent, attempt_number, reason)
+        Queue.enqueue_payment_result(%{"intent_id" => intent.id, "status" => "failed", "error" => reason})
     end
+
+    {:ok, :dispatched}
   end
 
   # Records every attempt in payment_attempts for full audit trail.
@@ -133,12 +150,12 @@ defmodule GlobalPayroll.Payments do
   # Payment failed — decide whether to retry or give up.
   defp on_failure(intent, attempt_number, reason) do
     if attempt_number < @max_retries do
-      # Increment retry_count and return error so Broadway requeues the message.
       intent
       |> PayrollIntent.changeset(%{retry_count: attempt_number})
       |> Repo.update()
 
-      {:error, :retry}
+      Queue.enqueue_execute_payments([intent.id])
+      {:ok, :retrying}
     else
       on_max_retries(intent, reason)
     end

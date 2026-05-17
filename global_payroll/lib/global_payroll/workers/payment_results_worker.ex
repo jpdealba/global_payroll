@@ -28,6 +28,13 @@ defmodule GlobalPayroll.Workers.PaymentResultsWorker do
   @impl Broadway
   def handle_message(_, message, _) do
     case Jason.decode!(message.data) do
+      %{"intent_id" => _} = event ->
+        case Payments.process_result(event) do
+          {:ok, _} -> message
+          {:error, reason} when reason in [:not_found, :already_settled] -> message
+          {:error, reason} -> Broadway.Message.failed(message, inspect(reason))
+        end
+
       %{"payment_id" => _, "status" => _} = event ->
         case Payments.handle_webhook_event(event) do
           {:ok, _} -> message

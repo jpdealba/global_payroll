@@ -21,6 +21,10 @@ defmodule GlobalPayroll.Employees do
     end
   end
 
+  def count_employees_by_company(company_id) do
+    Employee |> where([e], e.company_id == ^company_id) |> Repo.aggregate(:count)
+  end
+
   def list_employees_by_company(company_id, cursor \\ nil, per_page \\ 20) do
     Employee
     |> where([e], e.company_id == ^company_id)

@@ -54,12 +54,30 @@ defmodule GlobalPayroll.Payrolls do
     |> Repo.all()
   end
 
+  def list_intents_page(run_id, cursor \\ nil, per_page \\ 50) do
+    PayrollIntent
+    |> where([i], i.payroll_run_id == ^run_id)
+    |> Pagination.paginate(cursor, per_page)
+    |> Repo.all()
+    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
+  end
+
   def list_payslips_by_run(run_id) do
     alias GlobalPayroll.Payrolls.{Payslip, PayrollIntent}
     Payslip
     |> join(:inner, [s], i in PayrollIntent, on: s.payroll_intent_id == i.id)
     |> where([s, i], i.payroll_run_id == ^run_id)
     |> Repo.all()
+  end
+
+  def list_payslips_by_run_page(run_id, cursor \\ nil, per_page \\ 50) do
+    alias GlobalPayroll.Payrolls.{Payslip, PayrollIntent}
+    Payslip
+    |> join(:inner, [s], i in PayrollIntent, on: s.payroll_intent_id == i.id)
+    |> where([s, i], i.payroll_run_id == ^run_id)
+    |> Pagination.paginate(cursor, per_page)
+    |> Repo.all()
+    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
   end
 
   def list_payslips_by_employee(employee_id) do
