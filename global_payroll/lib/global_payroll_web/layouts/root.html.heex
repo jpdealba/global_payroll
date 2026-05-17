@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <title>Global Payroll</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-50 text-gray-900 min-h-screen">
+    <%= @inner_content %>
+    <script src={~p"/assets/phoenix.min.js"}></script>
+    <script src={~p"/assets/phoenix_live_view.min.js"}></script>
+    <script>
+      const {Socket} = Phoenix;
+      const {LiveSocket} = LiveView;
+      const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+      const liveSocket = new LiveSocket("/live", Socket, {params: {_csrf_token: csrfToken}});
+      liveSocket.connect();
+      window.liveSocket = liveSocket;
+    </script>
+  </body>
+</html>

@@ -23,9 +23,24 @@ defmodule GlobalPayrollWeb do
     quote do
       use Phoenix.Router, helpers: false
 
-      # Import common connection and controller functions to use in pipelines
       import Plug.Conn
       import Phoenix.Controller
+      import Phoenix.LiveView.Router
+    end
+  end
+
+  def live_view do
+    quote do
+      use Phoenix.LiveView, layout: {GlobalPayrollWeb.Layouts, :app}
+      unquote(verified_routes())
+    end
+  end
+
+  def html do
+    quote do
+      use Phoenix.Component
+      import Phoenix.Controller, only: [get_csrf_token: 0]
+      unquote(verified_routes())
     end
   end
 

@@ -58,7 +58,8 @@ defmodule GlobalPayroll.MixProject do
       {:ex_aws, "~> 2.5"},
       {:ex_aws_sqs, "~> 3.4"},
       {:hackney, "~> 1.9"},
-      {:sweet_xml, "~> 0.7"}
+      {:sweet_xml, "~> 0.7"},
+      {:phoenix_live_view, "~> 1.0"}
     ]
   end
 

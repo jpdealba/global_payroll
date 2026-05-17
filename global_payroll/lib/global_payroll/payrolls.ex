@@ -142,14 +142,29 @@ defmodule GlobalPayroll.Payrolls do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     Repo.transaction(fn ->
+      tax_rules =
+        from(t in CountryTaxRule,
+          where:
+            t.id in subquery(
+              from e in Employee,
+                where: e.company_id == ^run.company_id and e.status == "active",
+                select: e.country_tax_id
+            )
+        )
+        |> Repo.all()
+        |> Map.new(fn t -> {t.id, t} end)
+
       Employee
       |> where([e], e.company_id == ^run.company_id and e.status == "active")
-      |> preload(:country_tax_rule)
       |> Repo.stream()
       |> Stream.chunk_every(@chunk_size)
       |> Enum.each(fn chunk ->
         rows =
-          Task.async_stream(chunk, &build_intent_row(&1, run, now), ordered: false)
+          Task.async_stream(
+            chunk,
+            fn e -> build_intent_row(%{e | country_tax_rule: Map.fetch!(tax_rules, e.country_tax_id)}, run, now) end,
+            ordered: false
+          )
           |> Enum.map(fn {:ok, row} -> row end)
 
         Repo.insert_all(PayrollIntent, rows)
