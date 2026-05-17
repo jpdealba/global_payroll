@@ -5,6 +5,8 @@ defmodule GlobalPayrollWeb.EmployeeJSON do
 
   def show(%{employee: employee}), do: %{data: data(employee)}
 
+  def payslips(%{payslips: payslips}), do: %{data: Enum.map(payslips, &payslip_data/1)}
+
   def error(%{changeset: changeset}) do
     %{errors: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)}
   end
@@ -20,6 +22,21 @@ defmodule GlobalPayrollWeb.EmployeeJSON do
       status: employee.status,
       inserted_at: employee.inserted_at,
       updated_at: employee.updated_at
+    }
+  end
+
+  defp payslip_data(payslip) do
+    %{
+      id: payslip.id,
+      payroll_intent_id: payslip.payroll_intent_id,
+      employee_id: payslip.employee_id,
+      pay_period: payslip.pay_period,
+      gross_salary: payslip.gross_salary,
+      income_tax: payslip.income_tax,
+      social_security: payslip.social_security,
+      net_salary: payslip.net_salary,
+      generated_at: payslip.generated_at,
+      inserted_at: payslip.inserted_at
     }
   end
 

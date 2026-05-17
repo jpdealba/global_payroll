@@ -21,6 +21,9 @@ defmodule GlobalPayrollWeb.Router do
     post "/payroll-runs/:id/approve", PayrollRunController, :approve
     post "/payroll-runs/:id/cancel", PayrollRunController, :cancel
     get "/payroll-runs/:id/intents", PayrollRunController, :list_intents
+    get "/payroll-runs/:id/payslips", PayrollRunController, :list_payslips
+    get "/employees/:id/payslips", EmployeeController, :list_payslips
+    get "/companies/:id/invoices", CompanyController, :list_invoices
 
     get "/country-tax-rules", CountryTaxRuleController, :index
     put "/country-tax-rules/:id", CountryTaxRuleController, :update

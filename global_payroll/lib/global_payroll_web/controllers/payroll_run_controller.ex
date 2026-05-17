@@ -62,4 +62,8 @@ defmodule GlobalPayrollWeb.PayrollRunController do
     render(conn, :intents, intents: intents)
   end
 
+  def list_payslips(conn, %{"id" => run_id}) do
+    payslips = Payrolls.list_payslips_by_run(run_id)
+    render(conn, :payslips, payslips: payslips)
+  end
 end

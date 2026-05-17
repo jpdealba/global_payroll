@@ -1,6 +1,6 @@
 defmodule GlobalPayrollWeb.CompanyController do
   use GlobalPayrollWeb, :controller
-  alias GlobalPayroll.Companies
+  alias GlobalPayroll.{Companies, Payrolls}
 
   def index(conn, params) do
     {companies, next_cursor} = Companies.list_companies(params["cursor"])
@@ -20,5 +20,10 @@ defmodule GlobalPayrollWeb.CompanyController do
       {:error, :not_found} -> conn |> put_status(:not_found) |> json(%{error: "not found"})
       {:error, changeset} -> conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
     end
+  end
+
+  def list_invoices(conn, %{"id" => company_id}) do
+    invoices = Payrolls.list_invoices_by_company(company_id)
+    render(conn, :invoices, invoices: invoices)
   end
 end

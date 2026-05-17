@@ -52,6 +52,28 @@ defmodule GlobalPayroll.Payrolls do
     |> Repo.all()
   end
 
+  def list_payslips_by_run(run_id) do
+    alias GlobalPayroll.Payrolls.{Payslip, PayrollIntent}
+    Payslip
+    |> join(:inner, [s], i in PayrollIntent, on: s.payroll_intent_id == i.id)
+    |> where([s, i], i.payroll_run_id == ^run_id)
+    |> Repo.all()
+  end
+
+  def list_payslips_by_employee(employee_id) do
+    alias GlobalPayroll.Payrolls.Payslip
+    Payslip
+    |> where([s], s.employee_id == ^employee_id)
+    |> Repo.all()
+  end
+
+  def list_invoices_by_company(company_id) do
+    alias GlobalPayroll.Payrolls.Invoice
+    Invoice
+    |> where([i], i.company_id == ^company_id)
+    |> Repo.all()
+  end
+
   def approve_run(run_id) do
     with {:ok, run} <- get_run(run_id),
          :ok <- validate_transition(run.status, "approved") do

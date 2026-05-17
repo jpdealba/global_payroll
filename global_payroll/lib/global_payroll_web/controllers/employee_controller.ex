@@ -1,6 +1,6 @@
 defmodule GlobalPayrollWeb.EmployeeController do
   use GlobalPayrollWeb, :controller
-  alias GlobalPayroll.Employees
+  alias GlobalPayroll.{Employees, Payrolls}
 
   def index(conn, %{"company_id" => company_id} = params) do
     {employees, next_cursor} = Employees.list_employees_by_company(company_id, params["cursor"])
@@ -24,5 +24,10 @@ defmodule GlobalPayrollWeb.EmployeeController do
       {:error, :not_found} -> conn |> put_status(:not_found) |> json(%{error: "not found"})
       {:error, changeset} -> conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
     end
+  end
+
+  def list_payslips(conn, %{"id" => employee_id}) do
+    payslips = Payrolls.list_payslips_by_employee(employee_id)
+    render(conn, :payslips, payslips: payslips)
   end
 end
