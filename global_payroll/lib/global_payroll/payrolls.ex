@@ -148,7 +148,10 @@ defmodule GlobalPayroll.Payrolls do
       |> Repo.stream()
       |> Stream.chunk_every(@chunk_size)
       |> Enum.each(fn chunk ->
-        rows = chunk |> build_intents_data() |> build_rows(run, now)
+        rows =
+          Task.async_stream(chunk, &build_intent_row(&1, run, now), ordered: false)
+          |> Enum.map(fn {:ok, row} -> row end)
+
         Repo.insert_all(PayrollIntent, rows)
       end)
 
@@ -162,13 +165,7 @@ defmodule GlobalPayroll.Payrolls do
     end
   end
 
-  defp build_intents_data(employees) do
-    employees
-    |> Task.async_stream(&calc_intent/1, ordered: true)
-    |> Enum.map(fn {:ok, data} -> data end)
-  end
-
-  defp calc_intent(employee) do
+  defp build_intent_row(employee, run, now) do
     tax = employee.country_tax_rule
     gross = employee.gross_salary
     income_tax = Decimal.mult(gross, tax.income_tax_rate)
@@ -176,27 +173,20 @@ defmodule GlobalPayroll.Payrolls do
     net_salary = gross |> Decimal.sub(income_tax) |> Decimal.sub(social_security)
 
     %{
+      id: Ecto.UUID.generate(),
+      payroll_run_id: run.id,
+      company_id: run.company_id,
       employee_id: employee.id,
       gross_salary: gross,
       income_tax: income_tax,
       social_security: social_security,
       net_salary: net_salary,
-      platform_fee: @platform_fee
+      platform_fee: @platform_fee,
+      status: "pending",
+      retry_count: 0,
+      inserted_at: now,
+      updated_at: now
     }
-  end
-
-  defp build_rows(intents_data, run, now) do
-    Enum.map(intents_data, fn intent ->
-      Map.merge(intent, %{
-        id: Ecto.UUID.generate(),
-        payroll_run_id: run.id,
-        company_id: run.company_id,
-        status: "pending",
-        retry_count: 0,
-        inserted_at: now,
-        updated_at: now
-      })
-    end)
   end
 
   defp check_balance(company_id, total) do
