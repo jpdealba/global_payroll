@@ -1,7 +1,8 @@
 defmodule GlobalPayroll.Payments do
+  import Ecto.Query
   alias Ecto.Multi
   alias GlobalPayroll.Payments.PaymentAttempt
-  alias GlobalPayroll.Payrolls.PayrollIntent
+  alias GlobalPayroll.Payrolls.{PayrollIntent, PayrollRun, Payslip, Invoice}
   alias GlobalPayroll.{Repo, Ledger}
 
   @max_retries 3
@@ -92,9 +93,12 @@ defmodule GlobalPayroll.Payments do
     |> Repo.insert()
   end
 
-  # Payment succeeded — mark intent completed and debit the company balance.
-  # Both writes happen in one transaction: if the ledger insert fails, the intent stays pending.
+  # Payment succeeded — mark intent completed, debit the company balance, and generate payslip.
+  # All three writes happen in one transaction. After it commits, check if the run is fully settled.
   defp on_success(intent) do
+    run = Repo.get!(PayrollRun, intent.payroll_run_id)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
     Multi.new()
     |> Multi.update(:intent, PayrollIntent.changeset(intent, %{status: "completed"}))
     |> Multi.run(:ledger, fn _repo, _changes ->
@@ -105,10 +109,24 @@ defmodule GlobalPayroll.Payments do
         "Payroll payment for employee #{intent.employee_id}"
       )
     end)
+    |> Multi.insert(:payslip, Payslip.changeset(%Payslip{}, %{
+      payroll_intent_id: intent.id,
+      employee_id: intent.employee_id,
+      pay_period: run.pay_period,
+      gross_salary: intent.gross_salary,
+      income_tax: intent.income_tax,
+      social_security: intent.social_security,
+      net_salary: intent.net_salary,
+      generated_at: now
+    }))
     |> Repo.transaction()
     |> case do
-      {:ok, _} -> {:ok, :completed}
-      {:error, _step, reason, _} -> {:error, reason}
+      {:ok, _} ->
+        maybe_close_run(run)
+        {:ok, :completed}
+
+      {:error, _step, reason, _} ->
+        {:error, reason}
     end
   end
 
@@ -127,7 +145,7 @@ defmodule GlobalPayroll.Payments do
   end
 
   # Max retries reached — mark intent failed and refund the company.
-  # The refund returns the reserved funds so the company is not charged for a failed payment.
+  # After committing, check if the run is fully settled (other employees may still be in flight).
   defp on_max_retries(intent, reason) do
     Multi.new()
     |> Multi.update(
@@ -148,9 +166,59 @@ defmodule GlobalPayroll.Payments do
     end)
     |> Repo.transaction()
     |> case do
-      {:ok, _} -> {:error, :failed}
-      {:error, _step, reason, _} -> {:error, reason}
+      {:ok, _} ->
+        run = Repo.get!(PayrollRun, intent.payroll_run_id)
+        maybe_close_run(run)
+        {:error, :failed}
+
+      {:error, _step, reason, _} ->
+        {:error, reason}
     end
+  end
+
+  # Checks if every intent in the run has reached a terminal state using a COUNT query —
+  # avoids loading all intents into memory, which is critical at scale.
+  defp maybe_close_run(run) do
+    pending_count =
+      Repo.one(
+        from i in PayrollIntent,
+          where: i.payroll_run_id == ^run.id and i.status not in ["completed", "failed"],
+          select: count(i.id)
+      )
+
+    if pending_count == 0, do: generate_invoice(run)
+  end
+
+  # Computes all invoice totals with a single aggregate query on the DB side —
+  # never loads individual intent rows into memory regardless of employee count.
+  defp generate_invoice(run) do
+    agg =
+      Repo.one(
+        from i in PayrollIntent,
+          where: i.payroll_run_id == ^run.id and i.status == "completed",
+          select: %{
+            total_gross: sum(i.gross_salary),
+            total_taxes: sum(i.income_tax) + sum(i.social_security),
+            total_fees: sum(i.platform_fee)
+          }
+      )
+
+    total_gross = agg.total_gross || Decimal.new(0)
+    total_taxes = agg.total_taxes || Decimal.new(0)
+    total_fees = agg.total_fees || Decimal.new(0)
+
+    Multi.new()
+    |> Multi.insert(:invoice, Invoice.changeset(%Invoice{}, %{
+      company_id: run.company_id,
+      payroll_run_id: run.id,
+      total_gross_salaries: total_gross,
+      total_taxes_withheld: total_taxes,
+      total_platform_fees: total_fees,
+      total_amount: Decimal.add(total_gross, total_fees),
+      issued_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    }))
+    |> Multi.update(:run, PayrollRun.changeset(run, %{status: "completed"}))
+    |> Repo.transaction()
   end
 end
 
