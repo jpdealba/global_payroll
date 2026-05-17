@@ -1,7 +1,7 @@
 defmodule GlobalPayroll.Workers.PayrollWorker do
   use Broadway
 
-  alias GlobalPayroll.Payrolls
+  alias GlobalPayroll.{Payrolls, Payments}
 
   @queue_url Application.compile_env(:global_payroll, [:queues, :payroll_jobs])
 
@@ -31,6 +31,13 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
       %{"job" => "calculate_payroll", "run_id" => run_id} ->
         Payrolls.calculate_run(run_id)
         message
+
+      %{"job" => "execute_payment", "intent_id" => intent_id} ->
+        case Payments.execute_payment(intent_id) do
+          {:ok, _} -> message
+          {:error, reason} when reason in [:already_settled, :not_found] -> message
+          {:error, reason} -> Broadway.Message.failed(message, inspect(reason))
+        end
 
       _ ->
         Broadway.Message.failed(message, "unknown job type")
