@@ -3,7 +3,14 @@ defmodule GlobalPayrollWeb.PaymentWebhookController do
   alias GlobalPayroll.Queue
 
   def event(conn, params) do
-    Queue.enqueue_payment_result(params)
-    send_resp(conn, 200, "")
+    case Queue.enqueue_payment_result(params) do
+      :ok ->
+        send_resp(conn, 200, "")
+
+      {:error, reason} ->
+        conn
+        |> put_status(:service_unavailable)
+        |> json(%{error: "queue unavailable", detail: inspect(reason)})
+    end
   end
 end

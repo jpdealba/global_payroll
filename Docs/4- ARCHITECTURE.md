@@ -131,28 +131,154 @@ cross-call each other arbitrarily, and the event flow is preserved via a real qu
 
 ### Queue Message Design
 
-**`payroll-jobs`** — published by the API and by ResultsWorker on retry
+#### `payroll-jobs` — work to be done
 
 | Trigger | Message | Quantity |
 |---------|---------|----------|
-| `POST /payroll-runs/:id/start` | `{ job: "calculate_payroll", run_id }` | 1 per run |
-| `POST /payroll-runs/:id/approve` | `{ job: "execute_payment", intent_id }` | 1 per employee |
-| Payment failed, retry_count < 3 | `{ job: "execute_payment", intent_id }` | 1 per retry |
+| `POST /payroll-runs/:id/start` | `{"job":"calculate_payroll","run_id":"..."}` | 1 per run |
+| `approve_run` via `Task.start` (async) | `{"job":"execute_payment","intent_id":"..."}` | 1 per intent |
+| Payment failed, `retry_count < 3` | `{"job":"execute_payment","intent_id":"..."}` | 1 per retry |
 
-On approve, the API fetches all `payroll_intents` for the run and enqueues one message per intent.
-Broadway processes each independently — a failed payment is retried without affecting others.
+On approve, `approve_run` transitions the run to `paying` and immediately returns to the caller.
+A `Task.start` fires in the background to batch-enqueue one `execute_payment` message per intent
+using the SQS batch API (10 messages per call). Broadway processes each intent independently —
+a failed payment is retried without affecting others.
 
-**`payment-results`** — published by the Webhook Handler when the provider responds
+#### `payment-results` — outcomes from the provider
 
 | Trigger | Message | Quantity |
 |---------|---------|----------|
-| Provider webhook: success | `{ intent_id, status: "completed" }` | 1 per employee |
-| Provider webhook: failed | `{ intent_id, status: "failed" }` | 1 per attempt |
-| Reconciliation job: resolved | `{ intent_id, status: "completed" | "failed" }` | 1 per resolved intent |
+| Mock provider success (dev) | `{"intent_id":"...","status":"succeeded"}` | 1 per intent |
+| Mock provider failure (dev) | `{"intent_id":"...","status":"failed","error":"..."}` | 1 per attempt |
+| Real provider webhook (prod) | `{"payment_id":"...","status":"succeeded\|failed"}` | 1 per attempt |
+| Reconciliation (stuck intents) | `{"intent_id":"...","status":"succeeded\|failed"}` | 1 per resolved |
+
+In production, the provider calls `POST /webhooks/payment` when a payment resolves. The webhook
+handler only enqueues to `payment-results` and returns `200` immediately — real providers
+(Wise, Stripe) retry the webhook if they don't get a response within ~5 seconds, so no DB
+work is done inside the request. In dev, the mock short-circuits this: it simulates the provider
+call and enqueues the result itself, so the webhook is never triggered.
+
+---
+
+### State Machines
+
+#### PayrollRun
+
+```
+draft ──► calculating ──► pending_approval ──► approved ──► paying ──► completed
+                                                                  └──► failed
+```
+
+| Transition | Trigger |
+|---|---|
+| `draft → calculating` | Broadway picks up `calculate_payroll`, balance check passes |
+| `calculating → pending_approval` | All intents inserted successfully |
+| `pending_approval → approved` | `approve_run` called |
+| `approved → paying` | Immediately after approved, in the same `approve_run` call |
+| `paying → completed` | `InvoiceWorker` detects no intents left in `pending` or `processing` |
+| `any → failed` | Balance check fails, or run explicitly cancelled |
+
+#### PayrollIntent
+
+```
+pending ──► processing ──► completed
+                      └──► pending   (retry, retry_count < 3)
+                      └──► failed    (retry_count = 3)
+```
+
+| Transition | Trigger |
+|---|---|
+| `pending → processing` | `execute_payment` starts — intent locked before provider call |
+| `processing → completed` | `on_success` — ledger deduction + payslip created atomically |
+| `processing → pending` | `on_failure` — re-enqueued to `payroll-jobs` for retry |
+| `processing → failed` | `on_max_retries` — ledger refund issued |
+
+---
+
+### Complete Message Flow
+
+#### `calculate_payroll` message
+
+```
+POST /start
+  └─ enqueue {"job":"calculate_payroll","run_id":"X"} → payroll-jobs
+
+PayrollWorker (Broadway)
+  └─ Payrolls.calculate_run("X")
+       ├─ validate: status is "draft" or "calculating"
+       ├─ compute total net salaries + platform fees
+       ├─ check company balance ≥ total
+       ├─ run → "calculating"
+       ├─ delete any existing intents (safe to retry)
+       ├─ insert N intents in chunks of 500 (bulk insert, parallel per chunk)
+       └─ run → "pending_approval"
+                                        ← Broadway acks message (deleted from SQS)
+```
+
+#### `execute_payment` message
+
+```
+POST /approve
+  └─ approve_run()
+       ├─ run → "approved" → "paying"
+       └─ Task.start (async) → batch-enqueue N × {"job":"execute_payment","intent_id":"Y"}
+
+PayrollWorker (Broadway) — N messages processed in parallel
+  └─ Payments.execute_payment("Y")
+       ├─ guard: already settled? → ack and stop
+       ├─ check existing PaymentAttempt (idempotency on redelivery)
+       ├─ intent → "processing", save idempotency_key
+       ├─ MockProvider.call() → {:ok, provider_id} | {:error, reason}
+       ├─ record PaymentAttempt (succeeded | failed)
+       ├─ save provider_payment_id on intent
+       └─ enqueue {"intent_id":"Y","status":"succeeded|failed"} → payment-results
+                                        ← Broadway acks message
+
+PaymentResultsWorker (Broadway)
+  └─ Payments.process_result(event)
+       ├─ on "succeeded":
+       │    └─ DB transaction:
+       │         ├─ lock intent (FOR UPDATE)
+       │         ├─ intent → "completed"
+       │         ├─ Ledger.payroll_deduction()
+       │         └─ insert Payslip
+       └─ on "failed":
+            ├─ retry_count < 3 → intent → "pending", re-enqueue execute_payment
+            └─ retry_count = 3 → intent → "failed", Ledger.refund()
+
+InvoiceWorker (every 1 minute)
+  └─ close_completed_runs()
+       └─ finds "paying" runs with no intents in "pending" or "processing"
+            └─ FOR UPDATE SKIP LOCKED (safe for multiple nodes)
+                 ├─ aggregate completed intent totals
+                 ├─ insert Invoice
+                 └─ run → "completed"
+```
+
+#### Reconciliation (safety net, every 1 minute)
+
+```
+InvoiceWorker → Payments.reconcile_stuck_intents()
+
+Case 1 — intent "processing", PaymentAttempt exists but result never reached payment-results:
+  └─ re-dispatch result from the attempt record (no provider call)
+
+Case 2 — intent "processing", no PaymentAttempt (crash between status update and attempt record):
+  └─ reset intent → "pending", re-enqueue execute_payment
+
+Case 3 — intent "pending" for 5+ minutes, no PaymentAttempt (SQS message lost):
+  └─ re-enqueue execute_payment
+```
+
+---
 
 ### Why the webhook only enqueues
 
-Real payment providers (Wise, Stripe Payouts) expect a `200` response within ~5 seconds or they retry the webhook. Doing DB writes inside the request risks timeouts under load. The webhook handler only enqueues the result to `payment-results` and returns immediately — ResultsWorker does the actual work.
+Real payment providers (Wise, Stripe Payouts) expect a `200` response within ~5 seconds or they
+retry the webhook. Doing DB writes inside the request risks timeouts under load. The webhook
+handler only enqueues the result to `payment-results` and returns immediately — `PaymentResultsWorker`
+does the actual work.
 
 ### Stack
 
@@ -160,10 +286,10 @@ Real payment providers (Wise, Stripe Payouts) expect a `200` response within ~5 
 |-----------|-----------|
 | Web framework | Phoenix |
 | Queue consumer | Broadway |
-| Queue (local dev) | ElasticMQ (SQS-compatible) |
+| Queue (local dev) | floci (SQS-compatible) |
 | Queue (production) | AWS SQS |
 | Database | PostgreSQL (single instance) |
-| Reconciliation | Scheduled Task or Oban (planned) |
+| Reconciliation + invoice close | `InvoiceWorker` GenServer (every 1 min) |
 
 ### Why this still works at scale later
 

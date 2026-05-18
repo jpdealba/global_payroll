@@ -7,13 +7,16 @@ defmodule GlobalPayroll.Application do
 
   @impl true
   def start(_type, _args) do
+    ExAws.SQS.create_queue("payroll-jobs") |> ExAws.request()
+    ExAws.SQS.create_queue("payment-results") |> ExAws.request()
+
     children = [
       GlobalPayrollWeb.Telemetry,
       GlobalPayroll.Repo,
       {DNSCluster, query: Application.get_env(:global_payroll, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: GlobalPayroll.PubSub},
       GlobalPayroll.Workers.PayrollWorker,
       GlobalPayroll.Workers.PaymentResultsWorker,
+      GlobalPayroll.Workers.InvoiceWorker,
       GlobalPayrollWeb.Endpoint
     ]
 

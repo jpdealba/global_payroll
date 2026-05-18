@@ -12,8 +12,8 @@ config :global_payroll,
   generators: [timestamp_type: :utc_datetime]
 
 config :global_payroll, :queues,
-  payroll_jobs: "http://localhost:9324/000000000000/payroll-jobs",
-  payment_results: "http://localhost:9324/000000000000/payment-results"
+  payroll_jobs: "http://localhost:4566/000000000000/payroll-jobs",
+  payment_results: "http://localhost:4566/000000000000/payment-results"
 
 # Configures the endpoint
 config :global_payroll, GlobalPayrollWeb.Endpoint,
@@ -23,8 +23,6 @@ config :global_payroll, GlobalPayrollWeb.Endpoint,
     formats: [json: GlobalPayrollWeb.ErrorJSON],
     layout: false
   ],
-  # TODO: revisar y entender diferencia con lo que tenemos y tambien con usar redis.
-  pubsub_server: GlobalPayroll.PubSub,
   live_view: [signing_salt: "ERT1QxZZ"]
 
 # Configures the mailer

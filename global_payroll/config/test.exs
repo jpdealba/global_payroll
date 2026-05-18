@@ -29,5 +29,15 @@ config :swoosh, :api_client, false
 # Print only warnings and errors during test
 config :logger, level: :warning
 
+config :ex_aws,
+  access_key_id: "local",
+  secret_access_key: "local",
+  region: "us-east-1"
+
+config :ex_aws, :sqs,
+  scheme: "http://",
+  host: "localhost",
+  port: 4566
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime

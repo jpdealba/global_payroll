@@ -14,7 +14,9 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
         if connected?(socket), do: schedule_poll_if_needed(run.status)
         socket = assign(socket, run: run, alert: nil,
                         intent_cursor: nil, intent_cursors: [],
-                        payslip_cursor: nil, payslip_cursors: [])
+                        payslip_cursor: nil, payslip_cursors: [],
+                        status_counts: %{},
+                        finished_at: nil)
         {:ok, load_details(socket, run)}
     end
   end
@@ -32,7 +34,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
   def handle_event("start", _params, socket) do
     run = socket.assigns.run
-    {:ok, _} = Queue.enqueue_calculate_payroll(run.id)
+    :ok = Queue.enqueue_calculate_payroll(run.id)
     Process.send_after(self(), :poll, 800)
     {:noreply, assign(socket, alert: {:ok, "Calculation queued — status will update shortly"})}
   end
@@ -40,13 +42,12 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
   def handle_event("approve", _params, socket) do
     run = socket.assigns.run
 
-    with {:ok, approved_run} <- Payrolls.approve_run(run.id),
-         _ <- approved_run.id |> Payrolls.list_intent_ids() |> Queue.enqueue_execute_payments(),
-         {:ok, paying_run} <- Payrolls.start_paying(approved_run.id) do
-      schedule_poll_if_needed(paying_run.status)
-      socket = load_details(assign(socket, run: paying_run), paying_run)
-      {:noreply, assign(socket, alert: {:ok, "Approved — payments processing"})}
-    else
+    case Payrolls.approve_run(run.id) do
+      {:ok, paying_run} ->
+        schedule_poll_if_needed(paying_run.status)
+        socket = load_details(assign(socket, run: paying_run), paying_run)
+        {:noreply, assign(socket, alert: {:ok, "Approved — payments processing"})}
+
       {:error, reason} ->
         {:noreply, assign(socket, alert: {:error, inspect(reason)})}
     end
@@ -55,12 +56,16 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
   def handle_event("cancel", _params, socket) do
     run = socket.assigns.run
 
-    case Payrolls.cancel_run(run.id) do
-      {:ok, run} ->
-        {:noreply, assign(socket, run: run, alert: {:ok, "Run cancelled"})}
+    if cancellable?(run.status) do
+      case Payrolls.cancel_run(run.id) do
+        {:ok, run} ->
+          {:noreply, assign(socket, run: run, alert: {:ok, "Run cancelled"})}
 
-      {:error, reason} ->
-        {:noreply, assign(socket, alert: {:error, inspect(reason)})}
+        {:error, reason} ->
+          {:noreply, assign(socket, alert: {:error, inspect(reason)})}
+      end
+    else
+      {:noreply, assign(socket, alert: {:error, "Cannot cancel — payroll is already in progress"})}
     end
   end
 
@@ -91,7 +96,16 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
   defp load_details(socket, run) do
     if run.status in ~w(pending_approval approved paying completed failed) do
       {intents, intent_next} = Payrolls.list_intents_page(run.id, socket.assigns.intent_cursor)
-      socket = assign(socket, intents: intents, intent_next_cursor: intent_next)
+      status_counts = Payrolls.count_intents_by_status(run.id)
+
+      finished_at =
+        if run.status == "paying" and all_settled?(status_counts) and is_nil(socket.assigns.finished_at) do
+          DateTime.utc_now()
+        else
+          socket.assigns.finished_at
+        end
+
+      socket = assign(socket, intents: intents, intent_next_cursor: intent_next, status_counts: status_counts, finished_at: finished_at)
 
       if run.status == "completed" do
         {payslips, payslip_next} = Payrolls.list_payslips_by_run_page(run.id, socket.assigns.payslip_cursor)
@@ -102,7 +116,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
         assign(socket, payslips: [], payslip_next_cursor: nil, invoice: nil)
       end
     else
-      assign(socket, intents: [], intent_next_cursor: nil, payslips: [], payslip_next_cursor: nil, invoice: nil)
+      assign(socket, intents: [], intent_next_cursor: nil, payslips: [], payslip_next_cursor: nil, invoice: nil, status_counts: %{})
     end
   end
 
@@ -110,6 +124,14 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     Process.send_after(self(), :poll, @poll_interval)
   end
   defp schedule_poll_if_needed(_), do: :ok
+
+  defp cancellable?(status), do: status in ["draft", "pending_approval"]
+
+  defp all_settled?(counts) do
+    map_size(counts) > 0 and
+      Map.get(counts, "pending", 0) == 0 and
+      Map.get(counts, "processing", 0) == 0
+  end
 
   def render(assigns) do
     ~H"""
@@ -154,6 +176,26 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           <% end %>
         </div>
 
+        <%= if @run.ran_at do %>
+          <div class="mt-4 grid grid-cols-3 gap-4 text-sm border-t pt-4">
+            <div>
+              <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Started</div>
+              <div class="text-gray-700"><%= format_datetime(@run.ran_at) %></div>
+            </div>
+            <%= if @run.status == "completed" or @finished_at do %>
+              <% completed_at = @finished_at || @run.updated_at %>
+              <div>
+                <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Completed</div>
+                <div class="text-gray-700"><%= format_datetime(completed_at) %></div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Duration</div>
+                <div class="text-gray-700"><%= format_duration(@run.ran_at, completed_at) %></div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+
         <%= if @run.error do %>
           <div class="mt-4 p-3 bg-red-50 rounded text-sm text-red-700 border border-red-200">
             Error: <%= @run.error %>
@@ -173,7 +215,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
               Approve & Pay
             </button>
           <% end %>
-          <%= if @run.status not in ["completed", "failed"] do %>
+          <%= if cancellable?(@run.status) do %>
             <button phx-click="cancel"
                     class="border border-red-300 text-red-600 px-4 py-2 rounded text-sm hover:bg-red-50">
               Cancel
@@ -181,6 +223,29 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           <% end %>
         </div>
       </div>
+
+      <%= if map_size(@status_counts) > 0 do %>
+        <div class="bg-white rounded-lg border p-4 mb-6">
+          <div class="grid grid-cols-4 gap-3 text-center text-sm">
+            <div class="p-3 bg-gray-50 rounded">
+              <div class="text-2xl font-bold text-gray-700"><%= Map.get(@status_counts, "pending", 0) %></div>
+              <div class="text-xs text-gray-400 mt-1 uppercase tracking-wide">Pending</div>
+            </div>
+            <div class="p-3 bg-blue-50 rounded">
+              <div class="text-2xl font-bold text-blue-700"><%= Map.get(@status_counts, "processing", 0) %></div>
+              <div class="text-xs text-blue-400 mt-1 uppercase tracking-wide">Processing</div>
+            </div>
+            <div class="p-3 bg-green-50 rounded">
+              <div class="text-2xl font-bold text-green-700"><%= Map.get(@status_counts, "completed", 0) %></div>
+              <div class="text-xs text-green-400 mt-1 uppercase tracking-wide">Completed</div>
+            </div>
+            <div class="p-3 bg-red-50 rounded">
+              <div class="text-2xl font-bold text-red-700"><%= Map.get(@status_counts, "failed", 0) %></div>
+              <div class="text-xs text-red-400 mt-1 uppercase tracking-wide">Failed</div>
+            </div>
+          </div>
+        </div>
+      <% end %>
 
       <%= if @intents != [] do %>
         <div class="mb-6">
@@ -337,4 +402,15 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
   defp flash_class(:ok), do: "bg-green-50 text-green-700 border-green-200"
   defp flash_class(:error), do: "bg-red-50 text-red-700 border-red-200"
+
+  defp format_datetime(dt) do
+    Calendar.strftime(dt, "%b %d, %Y %H:%M:%S UTC")
+  end
+
+  defp format_duration(from, to) do
+    seconds = DateTime.diff(to, from)
+    minutes = div(seconds, 60)
+    secs = rem(seconds, 60)
+    if minutes > 0, do: "#{minutes}m #{secs}s", else: "#{secs}s"
+  end
 end
