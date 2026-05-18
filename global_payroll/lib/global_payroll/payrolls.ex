@@ -60,12 +60,22 @@ defmodule GlobalPayroll.Payrolls do
     |> Repo.all()
   end
 
-  def list_intents_page(run_id, cursor \\ nil, per_page \\ 50) do
-    PayrollIntent
-    |> where([i], i.payroll_run_id == ^run_id)
-    |> Pagination.paginate(cursor, per_page)
-    |> Repo.all()
-    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
+  def list_intents_page(run_id, cursor \\ nil, per_page \\ 50, status \\ nil) do
+    intents =
+      PayrollIntent
+      |> where([i], i.payroll_run_id == ^run_id)
+      |> then(fn q -> if status, do: where(q, [i], i.status == ^status), else: q end)
+      |> Pagination.paginate(cursor, per_page)
+      |> Repo.all()
+
+    {Repo.preload(intents, :employee), Pagination.next_cursor(intents, per_page)}
+  end
+
+  def get_intent_with_preloads(id) do
+    case Repo.get(PayrollIntent, id) do
+      nil -> {:error, :not_found}
+      intent -> {:ok, Repo.preload(intent, [:employee, :payslip, :payment_attempts])}
+    end
   end
 
   def list_payslips_by_run(run_id) do

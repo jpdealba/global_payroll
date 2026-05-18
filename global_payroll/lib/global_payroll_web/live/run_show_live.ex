@@ -16,7 +16,9 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                         intent_cursor: nil, intent_cursors: [],
                         payslip_cursor: nil, payslip_cursors: [],
                         status_counts: %{},
-                        finished_at: nil)
+                        finished_at: nil,
+                        selected_intent: nil,
+                        status_filter: nil)
         {:ok, load_details(socket, run)}
     end
   end
@@ -93,9 +95,26 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
+  def handle_event("select_intent", %{"id" => id}, socket) do
+    case Payrolls.get_intent_with_preloads(id) do
+      {:ok, intent} -> {:noreply, assign(socket, selected_intent: intent)}
+      {:error, :not_found} -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_intent", _params, socket) do
+    {:noreply, assign(socket, selected_intent: nil)}
+  end
+
+  def handle_event("filter_status", %{"status" => status}, socket) do
+    new_filter = if socket.assigns.status_filter == status, do: nil, else: status
+    socket = assign(socket, status_filter: new_filter, intent_cursor: nil, intent_cursors: [])
+    {:noreply, load_details(socket, socket.assigns.run)}
+  end
+
   defp load_details(socket, run) do
     if run.status in ~w(pending_approval approved paying completed failed) do
-      {intents, intent_next} = Payrolls.list_intents_page(run.id, socket.assigns.intent_cursor)
+      {intents, intent_next} = Payrolls.list_intents_page(run.id, socket.assigns.intent_cursor, 50, socket.assigns.status_filter)
       status_counts = Payrolls.count_intents_by_status(run.id)
 
       finished_at =
@@ -227,22 +246,26 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
       <%= if map_size(@status_counts) > 0 do %>
         <div class="bg-white rounded-lg border p-4 mb-6">
           <div class="grid grid-cols-4 gap-3 text-center text-sm">
-            <div class="p-3 bg-gray-50 rounded">
+            <button phx-click="filter_status" phx-value-status="pending"
+                    class={["p-3 rounded transition-all", if(@status_filter == "pending", do: "bg-gray-200 ring-2 ring-gray-400", else: "bg-gray-50 hover:bg-gray-100")]}>
               <div class="text-2xl font-bold text-gray-700"><%= Map.get(@status_counts, "pending", 0) %></div>
               <div class="text-xs text-gray-400 mt-1 uppercase tracking-wide">Pending</div>
-            </div>
-            <div class="p-3 bg-blue-50 rounded">
+            </button>
+            <button phx-click="filter_status" phx-value-status="processing"
+                    class={["p-3 rounded transition-all", if(@status_filter == "processing", do: "bg-blue-200 ring-2 ring-blue-400", else: "bg-blue-50 hover:bg-blue-100")]}>
               <div class="text-2xl font-bold text-blue-700"><%= Map.get(@status_counts, "processing", 0) %></div>
               <div class="text-xs text-blue-400 mt-1 uppercase tracking-wide">Processing</div>
-            </div>
-            <div class="p-3 bg-green-50 rounded">
+            </button>
+            <button phx-click="filter_status" phx-value-status="completed"
+                    class={["p-3 rounded transition-all", if(@status_filter == "completed", do: "bg-green-200 ring-2 ring-green-400", else: "bg-green-50 hover:bg-green-100")]}>
               <div class="text-2xl font-bold text-green-700"><%= Map.get(@status_counts, "completed", 0) %></div>
               <div class="text-xs text-green-400 mt-1 uppercase tracking-wide">Completed</div>
-            </div>
-            <div class="p-3 bg-red-50 rounded">
+            </button>
+            <button phx-click="filter_status" phx-value-status="failed"
+                    class={["p-3 rounded transition-all", if(@status_filter == "failed", do: "bg-red-200 ring-2 ring-red-400", else: "bg-red-50 hover:bg-red-100")]}>
               <div class="text-2xl font-bold text-red-700"><%= Map.get(@status_counts, "failed", 0) %></div>
               <div class="text-xs text-red-400 mt-1 uppercase tracking-wide">Failed</div>
-            </div>
+            </button>
           </div>
         </div>
       <% end %>
@@ -266,9 +289,10 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
               </thead>
               <tbody>
                 <%= for intent <- @intents do %>
-                  <tr class="border-t">
-                    <td class="px-4 py-3 font-mono text-xs text-gray-500">
-                      <%= String.slice(intent.employee_id, 0, 8) %>…
+                  <tr class="border-t hover:bg-gray-50 cursor-pointer"
+                      phx-click="select_intent" phx-value-id={intent.id}>
+                    <td class="px-4 py-3 font-medium">
+                      <%= intent.employee.name %>
                     </td>
                     <td class="px-4 py-3"><%= format_money(intent.gross_salary) %></td>
                     <td class="px-4 py-3 text-gray-500">
@@ -349,6 +373,120 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
         </div>
       <% end %>
 
+      <%= if @selected_intent do %>
+        <div class="fixed inset-0 z-50 overflow-hidden">
+          <div class="absolute inset-0 bg-black/40" phx-click="close_intent"></div>
+          <div class="absolute right-0 top-0 bottom-0 w-[520px] bg-white shadow-2xl flex flex-col">
+            <div class="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white">
+              <div>
+                <div class="text-xs text-gray-500 uppercase tracking-wide">Payment Intent</div>
+                <h2 class="text-lg font-semibold mt-0.5"><%= @selected_intent.employee.name %></h2>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class={["px-2 py-1 rounded-full text-xs font-medium", intent_status_badge(@selected_intent.status)]}>
+                  <%= @selected_intent.status %>
+                </span>
+                <button phx-click="close_intent" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+              </div>
+            </div>
+
+            <div class="p-6 space-y-6 flex-1 overflow-y-auto">
+              <div>
+                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Employee</h3>
+                <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Email</span>
+                    <span><%= @selected_intent.employee.email %></span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Contract Salary</span>
+                    <span class="font-medium"><%= format_money(@selected_intent.employee.gross_salary) %></span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Breakdown</h3>
+                <div class="text-sm space-y-0">
+                  <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-500">Gross Salary</span>
+                    <span><%= format_money(@selected_intent.gross_salary) %></span>
+                  </div>
+                  <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-500">Income Tax</span>
+                    <span class="text-red-600">− <%= format_money(@selected_intent.income_tax) %></span>
+                  </div>
+                  <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-500">Social Security</span>
+                    <span class="text-red-600">− <%= format_money(@selected_intent.social_security) %></span>
+                  </div>
+                  <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-500">Platform Fee</span>
+                    <span class="text-gray-600">− <%= format_money(@selected_intent.platform_fee) %></span>
+                  </div>
+                  <div class="flex justify-between py-3 font-semibold text-base">
+                    <span>Net Salary</span>
+                    <span class="text-green-700"><%= format_money(@selected_intent.net_salary) %></span>
+                  </div>
+                </div>
+                <%= if @selected_intent.error do %>
+                  <div class="mt-2 p-3 bg-red-50 rounded text-sm text-red-700 border border-red-200">
+                    <%= @selected_intent.error %>
+                  </div>
+                <% end %>
+              </div>
+
+              <%= if @selected_intent.payslip do %>
+                <div>
+                  <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Payslip</h3>
+                  <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-sm space-y-2">
+                    <div class="flex justify-between">
+                      <span class="text-gray-500">Period</span>
+                      <span class="font-medium"><%= @selected_intent.payslip.pay_period %></span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-gray-500">Generated</span>
+                      <span><%= format_datetime(@selected_intent.payslip.generated_at) %></span>
+                    </div>
+                    <div class="flex justify-between font-semibold pt-2 border-t border-green-200">
+                      <span>Net Paid</span>
+                      <span class="text-green-700"><%= format_money(@selected_intent.payslip.net_salary) %></span>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+
+              <div>
+                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Payment Attempts</h3>
+                <% attempts = mock_attempts(@selected_intent) %>
+                <%= if attempts == [] do %>
+                  <p class="text-sm text-gray-400">No attempts yet.</p>
+                <% else %>
+                  <div class="space-y-2">
+                    <%= for attempt <- attempts do %>
+                      <div class={["rounded-lg p-3 text-sm border", if(attempt.status == "succeeded", do: "bg-green-50 border-green-200", else: "bg-red-50 border-red-200")]}>
+                        <div class="flex items-center justify-between">
+                          <span class="font-medium">Attempt #<%= attempt.attempt_number %></span>
+                          <span class={["px-2 py-0.5 rounded-full text-xs font-medium", if(attempt.status == "succeeded", do: "bg-green-100 text-green-700", else: "bg-red-100 text-red-700")]}>
+                            <%= attempt.status %>
+                          </span>
+                        </div>
+                        <%= if attempt.error do %>
+                          <p class="text-red-600 mt-1"><%= attempt.error %></p>
+                        <% end %>
+                        <%= if attempt.attempted_at do %>
+                          <p class="text-gray-400 text-xs mt-1"><%= format_datetime(attempt.attempted_at) %></p>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
       <%= if @invoice do %>
         <div class="bg-white rounded-lg border p-6">
           <h2 class="text-lg font-semibold mb-4">Invoice</h2>
@@ -402,6 +540,19 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
   defp flash_class(:ok), do: "bg-green-50 text-green-700 border-green-200"
   defp flash_class(:error), do: "bg-red-50 text-red-700 border-red-200"
+
+  defp mock_attempts(%{payment_attempts: [_ | _] = attempts}), do: attempts
+  defp mock_attempts(%{status: "completed"}) do
+    [%{attempt_number: 1, status: "succeeded", error: nil, attempted_at: DateTime.utc_now()}]
+  end
+  defp mock_attempts(%{status: "failed", retry_count: n}) when n > 0 do
+    for i <- 1..n do
+      %{attempt_number: i, status: "failed",
+        error: "Mock: provider rejected — insufficient funds or card declined",
+        attempted_at: DateTime.utc_now()}
+    end
+  end
+  defp mock_attempts(_), do: []
 
   defp format_datetime(dt) do
     Calendar.strftime(dt, "%b %d, %Y %H:%M:%S UTC")
