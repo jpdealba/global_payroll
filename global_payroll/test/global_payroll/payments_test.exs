@@ -8,7 +8,8 @@ defmodule GlobalPayroll.PaymentsTest do
     test "marks intent as completed and creates a payslip" do
       {_company, _run, intent} = setup_paying_intent()
 
-      assert {:ok, :completed} = Payments.process_result(%{"intent_id" => intent.id, "status" => "succeeded"})
+      assert {:ok, :completed} =
+               Payments.process_result(%{"intent_id" => intent.id, "status" => "succeeded"})
 
       {:ok, result} = Payrolls.get_intent_with_preloads(intent.id)
       assert result.status == "completed"
@@ -43,7 +44,11 @@ defmodule GlobalPayroll.PaymentsTest do
       balance_before = Companies.get_company_balance(company.id)
 
       # retry_count 2 means this is the 3rd attempt — at the limit, so no more retries
-      Payments.process_result(%{"intent_id" => intent.id, "status" => "failed", "error" => "timeout"})
+      Payments.process_result(%{
+        "intent_id" => intent.id,
+        "status" => "failed",
+        "error" => "timeout"
+      })
 
       {:ok, result} = Payrolls.get_intent_with_preloads(intent.id)
       assert result.status == "failed"
@@ -54,10 +59,19 @@ defmodule GlobalPayroll.PaymentsTest do
 
     test "is idempotent: returns already_settled if intent is already failed" do
       {_company, _run, intent} = setup_paying_intent(retry_count: 2)
-      Payments.process_result(%{"intent_id" => intent.id, "status" => "failed", "error" => "timeout"})
+
+      Payments.process_result(%{
+        "intent_id" => intent.id,
+        "status" => "failed",
+        "error" => "timeout"
+      })
 
       assert {:error, :already_settled} =
-               Payments.process_result(%{"intent_id" => intent.id, "status" => "failed", "error" => "timeout"})
+               Payments.process_result(%{
+                 "intent_id" => intent.id,
+                 "status" => "failed",
+                 "error" => "timeout"
+               })
     end
   end
 

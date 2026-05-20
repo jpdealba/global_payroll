@@ -317,7 +317,8 @@ defmodule GlobalPayroll.Payrolls do
   end
 
   def close_completed_runs do
-    from(r in PayrollRun, as: :run,
+    from(r in PayrollRun,
+      as: :run,
       where: r.status == "paying",
       where:
         not exists(

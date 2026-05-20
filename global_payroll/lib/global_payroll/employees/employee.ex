@@ -11,7 +11,11 @@ defmodule GlobalPayroll.Employees.Employee do
     field(:gross_salary, :decimal)
     field(:status, :string, default: "pending")
     belongs_to(:company, GlobalPayroll.Companies.Company)
-    belongs_to(:country_tax_rule, GlobalPayroll.Taxes.CountryTaxRule, foreign_key: :country_tax_id)
+
+    belongs_to(:country_tax_rule, GlobalPayroll.Taxes.CountryTaxRule,
+      foreign_key: :country_tax_id
+    )
+
     has_many(:payment_methods, GlobalPayroll.Employees.PaymentMethod)
     has_many(:payroll_intents, GlobalPayroll.Payrolls.PayrollIntent)
     has_many(:payslips, GlobalPayroll.Payrolls.Payslip)

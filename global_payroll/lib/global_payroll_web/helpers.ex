@@ -1,5 +1,6 @@
 defmodule GlobalPayrollWeb.Helpers do
   def format_money(nil), do: "$0.00"
+
   def format_money(value) do
     d = Decimal.new(value) |> Decimal.round(2)
     str = Decimal.to_string(d, :normal)

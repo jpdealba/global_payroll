@@ -60,7 +60,9 @@ defmodule GlobalPayroll.Queue do
 
   defp request_with_retry(request, attempt \\ 1) do
     case ExAws.request(request) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       {:error, _reason} when attempt < @max_send_retries ->
         Process.sleep(send_backoff_ms(attempt))
         request_with_retry(request, attempt + 1)

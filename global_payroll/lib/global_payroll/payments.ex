@@ -414,7 +414,6 @@ defmodule GlobalPayroll.Payments do
     |> Repo.all()
     |> Enum.each(&Queue.enqueue_execute_payment/1)
   end
-
 end
 
 defmodule GlobalPayroll.Payments.MockPaymentProvider do

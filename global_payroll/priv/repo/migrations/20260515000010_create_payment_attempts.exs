@@ -5,10 +5,17 @@ defmodule GlobalPayroll.Repo.Migrations.CreatePaymentAttempts do
   def change do
     create table(:payment_attempts, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :payroll_intent_id, references(:payroll_intents, type: :binary_id, on_delete: :restrict), null: false
-      add :attempt_number, :integer, null: false          # 1, 2, or 3
-      add :status, :string, null: false                   # succeeded | failed
-      add :error, :string                                 # nullable — provider error message
+
+      add :payroll_intent_id,
+          references(:payroll_intents, type: :binary_id, on_delete: :restrict),
+          null: false
+
+      # 1, 2, or 3
+      add :attempt_number, :integer, null: false
+      # succeeded | failed
+      add :status, :string, null: false
+      # nullable — provider error message
+      add :error, :string
       add :attempted_at, :utc_datetime, null: false
 
       timestamps()

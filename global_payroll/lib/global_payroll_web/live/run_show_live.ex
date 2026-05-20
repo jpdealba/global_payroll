@@ -12,13 +12,21 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
       {:ok, run} ->
         if connected?(socket), do: schedule_poll_if_needed(run.status)
-        socket = assign(socket, run: run, alert: nil,
-                        intent_cursor: nil, intent_cursors: [],
-                        payslip_cursor: nil, payslip_cursors: [],
-                        status_counts: %{},
-                        finished_at: nil,
-                        selected_intent: nil,
-                        status_filter: nil)
+
+        socket =
+          assign(socket,
+            run: run,
+            alert: nil,
+            intent_cursor: nil,
+            intent_cursors: [],
+            payslip_cursor: nil,
+            payslip_cursors: [],
+            status_counts: %{},
+            finished_at: nil,
+            selected_intent: nil,
+            status_filter: nil
+          )
+
         {:ok, load_details(socket, run)}
     end
   end
@@ -67,13 +75,17 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           {:noreply, assign(socket, alert: {:error, inspect(reason)})}
       end
     else
-      {:noreply, assign(socket, alert: {:error, "Cannot cancel — payroll is already in progress"})}
+      {:noreply,
+       assign(socket, alert: {:error, "Cannot cancel — payroll is already in progress"})}
     end
   end
 
   def handle_event("intent_next", _params, socket) do
     prev_stack = [socket.assigns.intent_cursor | socket.assigns.intent_cursors]
-    socket = assign(socket, intent_cursor: socket.assigns.intent_next_cursor, intent_cursors: prev_stack)
+
+    socket =
+      assign(socket, intent_cursor: socket.assigns.intent_next_cursor, intent_cursors: prev_stack)
+
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
@@ -85,7 +97,13 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
   def handle_event("payslip_next", _params, socket) do
     prev_stack = [socket.assigns.payslip_cursor | socket.assigns.payslip_cursors]
-    socket = assign(socket, payslip_cursor: socket.assigns.payslip_next_cursor, payslip_cursors: prev_stack)
+
+    socket =
+      assign(socket,
+        payslip_cursor: socket.assigns.payslip_next_cursor,
+        payslip_cursors: prev_stack
+      )
+
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
@@ -114,20 +132,36 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
   defp load_details(socket, run) do
     if run.status in ~w(pending_approval approved paying completed failed) do
-      {intents, intent_next} = Payrolls.list_intents_page(run.id, socket.assigns.intent_cursor, 50, socket.assigns.status_filter)
+      {intents, intent_next} =
+        Payrolls.list_intents_page(
+          run.id,
+          socket.assigns.intent_cursor,
+          50,
+          socket.assigns.status_filter
+        )
+
       status_counts = Payrolls.count_intents_by_status(run.id)
 
       finished_at =
-        if run.status == "paying" and all_settled?(status_counts) and is_nil(socket.assigns.finished_at) do
+        if run.status == "paying" and all_settled?(status_counts) and
+             is_nil(socket.assigns.finished_at) do
           DateTime.utc_now()
         else
           socket.assigns.finished_at
         end
 
-      socket = assign(socket, intents: intents, intent_next_cursor: intent_next, status_counts: status_counts, finished_at: finished_at)
+      socket =
+        assign(socket,
+          intents: intents,
+          intent_next_cursor: intent_next,
+          status_counts: status_counts,
+          finished_at: finished_at
+        )
 
       if run.status == "completed" do
-        {payslips, payslip_next} = Payrolls.list_payslips_by_run_page(run.id, socket.assigns.payslip_cursor)
+        {payslips, payslip_next} =
+          Payrolls.list_payslips_by_run_page(run.id, socket.assigns.payslip_cursor)
+
         invoices = Payrolls.list_invoices_by_company(run.company_id)
         invoice = Enum.find(invoices, &(&1.payroll_run_id == run.id))
         assign(socket, payslips: payslips, payslip_next_cursor: payslip_next, invoice: invoice)
@@ -135,13 +169,21 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
         assign(socket, payslips: [], payslip_next_cursor: nil, invoice: nil)
       end
     else
-      assign(socket, intents: [], intent_next_cursor: nil, payslips: [], payslip_next_cursor: nil, invoice: nil, status_counts: %{})
+      assign(socket,
+        intents: [],
+        intent_next_cursor: nil,
+        payslips: [],
+        payslip_next_cursor: nil,
+        invoice: nil,
+        status_counts: %{}
+      )
     end
   end
 
   defp schedule_poll_if_needed(status) when status in @polling_states do
     Process.send_after(self(), :poll, @poll_interval)
   end
+
   defp schedule_poll_if_needed(_), do: :ok
 
   defp cancellable?(status), do: status in ["draft", "pending_approval"]
@@ -164,13 +206,13 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           Payroll Run — <span class="text-blue-600"><%= @run.pay_period %></span>
         </h1>
       </div>
-
+    
       <%= if @alert do %>
         <div class={["mb-4 p-3 rounded text-sm border", flash_class(elem(@alert, 0))]}>
           <%= elem(@alert, 1) %>
         </div>
       <% end %>
-
+    
       <div class="bg-white rounded-lg border p-6 mb-6">
         <div class="flex items-start justify-between">
           <div>
@@ -194,7 +236,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
             </div>
           <% end %>
         </div>
-
+    
         <%= if @run.ran_at do %>
           <div class="mt-4 grid grid-cols-3 gap-4 text-sm border-t pt-4">
             <div>
@@ -214,13 +256,13 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
             <% end %>
           </div>
         <% end %>
-
+    
         <%= if @run.error do %>
           <div class="mt-4 p-3 bg-red-50 rounded text-sm text-red-700 border border-red-200">
             Error: <%= @run.error %>
           </div>
         <% end %>
-
+    
         <div class="flex gap-3 mt-5">
           <%= if @run.status == "draft" do %>
             <button phx-click="start"
@@ -242,7 +284,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           <% end %>
         </div>
       </div>
-
+    
       <%= if map_size(@status_counts) > 0 do %>
         <div class="bg-white rounded-lg border p-4 mb-6">
           <div class="grid grid-cols-4 gap-3 text-center text-sm">
@@ -269,7 +311,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           </div>
         </div>
       <% end %>
-
+    
       <%= if @intents != [] do %>
         <div class="mb-6">
           <h2 class="text-lg font-semibold mb-3">
@@ -325,7 +367,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           </div>
         </div>
       <% end %>
-
+    
       <%= if @payslips != [] do %>
         <div class="mb-6">
           <h2 class="text-lg font-semibold mb-3">
@@ -372,7 +414,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           </div>
         </div>
       <% end %>
-
+    
       <%= if @selected_intent do %>
         <div class="fixed inset-0 z-50 overflow-hidden">
           <div class="absolute inset-0 bg-black/40" phx-click="close_intent"></div>
@@ -389,7 +431,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                 <button phx-click="close_intent" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
               </div>
             </div>
-
+    
             <div class="p-6 space-y-6 flex-1 overflow-y-auto">
               <div>
                 <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Employee</h3>
@@ -404,7 +446,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                   </div>
                 </div>
               </div>
-
+    
               <div>
                 <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Breakdown</h3>
                 <div class="text-sm space-y-0">
@@ -435,7 +477,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                   </div>
                 <% end %>
               </div>
-
+    
               <%= if @selected_intent.payslip do %>
                 <div>
                   <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Payslip</h3>
@@ -455,7 +497,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
                   </div>
                 </div>
               <% end %>
-
+    
               <div>
                 <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Payment Attempts</h3>
                 <% attempts = mock_attempts(@selected_intent) %>
@@ -486,7 +528,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           </div>
         </div>
       <% end %>
-
+    
       <%= if @invoice do %>
         <div class="bg-white rounded-lg border p-6">
           <h2 class="text-lg font-semibold mb-4">Invoice</h2>
@@ -542,16 +584,22 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
   defp flash_class(:error), do: "bg-red-50 text-red-700 border-red-200"
 
   defp mock_attempts(%{payment_attempts: [_ | _] = attempts}), do: attempts
+
   defp mock_attempts(%{status: "completed"}) do
     [%{attempt_number: 1, status: "succeeded", error: nil, attempted_at: DateTime.utc_now()}]
   end
+
   defp mock_attempts(%{status: "failed", retry_count: n}) when n > 0 do
     for i <- 1..n do
-      %{attempt_number: i, status: "failed",
+      %{
+        attempt_number: i,
+        status: "failed",
         error: "Mock: provider rejected — insufficient funds or card declined",
-        attempted_at: DateTime.utc_now()}
+        attempted_at: DateTime.utc_now()
+      }
     end
   end
+
   defp mock_attempts(_), do: []
 
   defp format_datetime(dt) do

@@ -9,8 +9,18 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
 
       company ->
         {tax_rules, _} = Taxes.list_country_tax_rules()
-        socket = assign(socket, tax_rules: tax_rules, alert: nil,
-                        emp_cursor: nil, emp_cursors: [], emp_next_cursor: nil, emp_total: 0, emp_page: 1)
+
+        socket =
+          assign(socket,
+            tax_rules: tax_rules,
+            alert: nil,
+            emp_cursor: nil,
+            emp_cursors: [],
+            emp_next_cursor: nil,
+            emp_total: 0,
+            emp_page: 1
+          )
+
         {:ok, load_data(socket, company)}
     end
   end
@@ -18,6 +28,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
   defp load_data(socket, company) do
     {runs, _} = Payrolls.list_runs(company.id)
     balance = Companies.get_company_balance(company.id)
+
     socket
     |> assign(company: company, balance: balance, runs: runs)
     |> load_employees(company.id, nil, [])
@@ -27,7 +38,15 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     {employees, next_cursor} = Employees.list_employees_by_company(company_id, cursor)
     employees = GlobalPayroll.Repo.preload(employees, :country_tax_rule)
     total = Employees.count_employees_by_company(company_id)
-    assign(socket, employees: employees, emp_total: total, emp_cursor: cursor, emp_cursors: prev_cursors, emp_next_cursor: next_cursor, emp_page: length(prev_cursors) + 1)
+
+    assign(socket,
+      employees: employees,
+      emp_total: total,
+      emp_cursor: cursor,
+      emp_cursors: prev_cursors,
+      emp_next_cursor: next_cursor,
+      emp_page: length(prev_cursors) + 1
+    )
   end
 
   def handle_event("deposit", %{"amount" => amount}, socket) do
@@ -121,13 +140,13 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
           </span>
         </div>
       </div>
-
+    
       <%= if @alert do %>
         <div class={["mb-4 p-3 rounded text-sm border", flash_class(elem(@alert, 0))]}>
           <%= elem(@alert, 1) %>
         </div>
       <% end %>
-
+    
       <div class="grid grid-cols-2 gap-6 mb-8">
         <div class="bg-white rounded-lg border p-5">
           <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Balance</div>
@@ -144,12 +163,12 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
           </form>
         </div>
       </div>
-
+    
       <div class="mb-8">
         <h2 class="text-lg font-semibold mb-3">
           Employees (<%= format_number(@emp_total) %>)
         </h2>
-
+    
         <details class="mb-3 bg-white rounded-lg border">
           <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-blue-600 hover:bg-gray-50">
             + Add Employee
@@ -190,7 +209,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
             </div>
           </form>
         </details>
-
+    
         <div class="bg-white rounded-lg border overflow-hidden">
           <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-500 text-left">
@@ -245,7 +264,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
           </div>
         </div>
       </div>
-
+    
       <div>
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold">Payroll Runs</h2>
@@ -258,7 +277,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
             </button>
           </form>
         </div>
-
+    
         <div class="bg-white rounded-lg border overflow-hidden">
           <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-500 text-left">

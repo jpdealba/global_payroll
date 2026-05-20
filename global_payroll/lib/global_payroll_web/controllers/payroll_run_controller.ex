@@ -16,8 +16,11 @@ defmodule GlobalPayrollWeb.PayrollRunController do
 
   def create(conn, %{"company_id" => company_id, "pay_period" => pay_period}) do
     case Payrolls.create_run(company_id, pay_period) do
-      {:ok, run} -> conn |> put_status(:created) |> render(:show, run: run)
-      {:error, changeset} -> conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
+      {:ok, run} ->
+        conn |> put_status(:created) |> render(:show, run: run)
+
+      {:error, changeset} ->
+        conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
     end
   end
 
