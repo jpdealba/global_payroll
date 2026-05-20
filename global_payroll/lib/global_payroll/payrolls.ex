@@ -89,13 +89,18 @@ defmodule GlobalPayroll.Payrolls do
 
   def list_payslips_by_run_page(run_id, cursor \\ nil, per_page \\ 50) do
     alias GlobalPayroll.Payrolls.{Payslip, PayrollIntent}
+    alias GlobalPayroll.Employees.Employee
 
-    Payslip
-    |> join(:inner, [s], i in PayrollIntent, on: s.payroll_intent_id == i.id)
-    |> where([s, i], i.payroll_run_id == ^run_id)
-    |> Pagination.paginate(cursor, per_page)
-    |> Repo.all()
-    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
+    payslips =
+      Payslip
+      |> join(:inner, [s], i in PayrollIntent, on: s.payroll_intent_id == i.id)
+      |> join(:inner, [s, _i], e in Employee, on: s.employee_id == e.id)
+      |> where([_s, i], i.payroll_run_id == ^run_id)
+      |> preload([s, _i, e], employee: e)
+      |> Pagination.paginate(cursor, per_page)
+      |> Repo.all()
+
+    {payslips, Pagination.next_cursor(payslips, per_page)}
   end
 
   def list_payslips_by_employee(employee_id) do
@@ -352,6 +357,7 @@ defmodule GlobalPayroll.Payrolls do
         where: i.payroll_run_id == ^run.id and i.status == "completed",
         select: %{
           total_gross: sum(i.gross_salary),
+          total_net: sum(i.net_salary),
           total_taxes: sum(i.income_tax) + sum(i.social_security),
           total_fees: sum(i.platform_fee)
         }
@@ -359,6 +365,7 @@ defmodule GlobalPayroll.Payrolls do
       |> Repo.one()
 
     total_gross = agg.total_gross || Decimal.new(0)
+    total_net = agg.total_net || Decimal.new(0)
     total_taxes = agg.total_taxes || Decimal.new(0)
     total_fees = agg.total_fees || Decimal.new(0)
 
@@ -369,7 +376,7 @@ defmodule GlobalPayroll.Payrolls do
         total_gross_salaries: total_gross,
         total_taxes_withheld: total_taxes,
         total_platform_fees: total_fees,
-        total_amount: Decimal.add(total_gross, total_fees),
+        total_amount: Decimal.add(total_net, total_fees),
         issued_at: DateTime.utc_now() |> DateTime.truncate(:second)
       })
     )

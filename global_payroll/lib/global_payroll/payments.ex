@@ -238,7 +238,7 @@ defmodule GlobalPayroll.Payments do
     |> Multi.run(:ledger, fn _repo, %{lock: locked} ->
       Ledger.payroll_deduction(
         locked.company_id,
-        locked.net_salary,
+        Decimal.add(locked.net_salary, locked.platform_fee),
         locked.id,
         "Payroll payment for employee #{locked.employee_id}"
       )
@@ -326,7 +326,7 @@ defmodule GlobalPayroll.Payments do
     |> Multi.run(:ledger, fn _repo, %{lock: locked} ->
       Ledger.refund(
         locked.company_id,
-        locked.net_salary,
+        Decimal.add(locked.net_salary, locked.platform_fee),
         locked.id,
         "Refund for failed payment to employee #{locked.employee_id}"
       )

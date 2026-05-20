@@ -231,7 +231,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
           </div>
           <%= if @run.total_amount do %>
             <div class="text-right">
-              <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Amount</div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Projected Total</div>
               <div class="text-2xl font-bold"><%= format_money(@run.total_amount) %></div>
             </div>
           <% end %>
@@ -371,7 +371,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
       <%= if @payslips != [] do %>
         <div class="mb-6">
           <h2 class="text-lg font-semibold mb-3">
-            Payslips (<%= length(@payslips) %><%= if @payslip_next_cursor, do: "+" %>)
+            Payslips (<%= format_number(Map.get(@status_counts, "completed", 0)) %>)
           </h2>
           <div class="bg-white rounded-lg border overflow-hidden">
             <table class="w-full text-sm">
@@ -387,8 +387,8 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
               <tbody>
                 <%= for slip <- @payslips do %>
                   <tr class="border-t">
-                    <td class="px-4 py-3 font-mono text-xs text-gray-500">
-                      <%= String.slice(slip.employee_id, 0, 8) %>…
+                    <td class="px-4 py-3 font-medium">
+                      <%= slip.employee.name %>
                     </td>
                     <td class="px-4 py-3"><%= format_money(slip.gross_salary) %></td>
                     <td class="px-4 py-3 text-gray-500"><%= format_money(slip.income_tax) %></td>
@@ -531,22 +531,33 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     
       <%= if @invoice do %>
         <div class="bg-white rounded-lg border p-6">
-          <h2 class="text-lg font-semibold mb-4">Invoice</h2>
+          <h2 class="text-lg font-semibold mb-2">Invoice</h2>
+          <div class="flex items-center gap-4 text-sm mb-4">
+            <span class="text-green-700 font-medium">
+              ✓ <%= format_number(Map.get(@status_counts, "completed", 0)) %> paid
+            </span>
+            <% failed = Map.get(@status_counts, "failed", 0) %>
+            <%= if failed > 0 do %>
+              <span class="text-red-600 font-medium">
+                ✗ <%= format_number(failed) %> failed — funds refunded to balance
+              </span>
+            <% end %>
+          </div>
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div class="p-3 bg-gray-50 rounded">
-              <div class="text-gray-500 text-xs mb-1">Gross Salaries</div>
+              <div class="text-gray-500 text-xs mb-1">Gross Salaries (paid only)</div>
               <div class="font-semibold"><%= format_money(@invoice.total_gross_salaries) %></div>
             </div>
             <div class="p-3 bg-gray-50 rounded">
-              <div class="text-gray-500 text-xs mb-1">Taxes Withheld</div>
+              <div class="text-gray-500 text-xs mb-1">Taxes Withheld (paid only)</div>
               <div class="font-semibold"><%= format_money(@invoice.total_taxes_withheld) %></div>
             </div>
             <div class="p-3 bg-gray-50 rounded">
-              <div class="text-gray-500 text-xs mb-1">Platform Fees</div>
+              <div class="text-gray-500 text-xs mb-1">Platform Fees (paid only)</div>
               <div class="font-semibold"><%= format_money(@invoice.total_platform_fees) %></div>
             </div>
             <div class="p-3 bg-blue-50 rounded border border-blue-200">
-              <div class="text-blue-600 text-xs mb-1 font-medium">Total Amount</div>
+              <div class="text-blue-600 text-xs mb-1 font-medium">Total Charged</div>
               <div class="font-bold text-xl text-blue-700"><%= format_money(@invoice.total_amount) %></div>
             </div>
           </div>
