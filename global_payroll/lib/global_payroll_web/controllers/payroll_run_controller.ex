@@ -1,6 +1,6 @@
 defmodule GlobalPayrollWeb.PayrollRunController do
   use GlobalPayrollWeb, :controller
-  alias GlobalPayroll.Payrolls
+  alias GlobalPayroll.{Payrolls, Queue}
 
   def index(conn, %{"company_id" => company_id} = params) do
     {runs, next_cursor} = Payrolls.list_runs(company_id, params["cursor"])
