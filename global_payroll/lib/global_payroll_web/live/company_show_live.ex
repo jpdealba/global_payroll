@@ -18,7 +18,12 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
             emp_cursors: [],
             emp_next_cursor: nil,
             emp_total: 0,
-            emp_page: 1
+            emp_page: 1,
+            transactions: [],
+            tx_cursor: nil,
+            tx_cursors: [],
+            tx_next_cursor: nil,
+            tx_type_filter: nil
           )
 
         {:ok, load_data(socket, company)}
@@ -32,6 +37,19 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     socket
     |> assign(company: company, balance: balance, runs: runs)
     |> load_employees(company.id, nil, [])
+    |> load_transactions(company.id, nil, [], nil)
+  end
+
+  defp load_transactions(socket, company_id, cursor, prev_cursors, type) do
+    {txs, next} = Companies.list_transactions(company_id, cursor, 25, type)
+
+    assign(socket,
+      transactions: txs,
+      tx_cursor: cursor,
+      tx_cursors: prev_cursors,
+      tx_next_cursor: next,
+      tx_type_filter: type
+    )
   end
 
   defp load_employees(socket, company_id, cursor, prev_cursors) do
@@ -119,6 +137,21 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
   def handle_event("emp_prev", _params, socket) do
     [prev | rest] = socket.assigns.emp_cursors
     {:noreply, load_employees(socket, socket.assigns.company.id, prev, rest)}
+  end
+
+  def handle_event("tx_next", _params, socket) do
+    prev_stack = [socket.assigns.tx_cursor | socket.assigns.tx_cursors]
+    {:noreply, load_transactions(socket, socket.assigns.company.id, socket.assigns.tx_next_cursor, prev_stack, socket.assigns.tx_type_filter)}
+  end
+
+  def handle_event("tx_prev", _params, socket) do
+    [prev | rest] = socket.assigns.tx_cursors
+    {:noreply, load_transactions(socket, socket.assigns.company.id, prev, rest, socket.assigns.tx_type_filter)}
+  end
+
+  def handle_event("filter_tx_type", %{"type" => type}, socket) do
+    new_filter = if socket.assigns.tx_type_filter == type, do: nil, else: type
+    {:noreply, load_transactions(socket, socket.assigns.company.id, nil, [], new_filter)}
   end
 
   defp changeset_errors(changeset) do
@@ -319,6 +352,70 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
           </table>
         </div>
       </div>
+      <div class="mt-8">
+        <h2 class="text-lg font-semibold mb-3">Ledger</h2>
+
+        <div class="flex gap-2 mb-3">
+          <%= for {label, type, color} <- [{"All", nil, "gray"}, {"Deposits", "deposit", "green"}, {"Deductions", "payroll_deduction", "red"}, {"Refunds", "refund", "blue"}] do %>
+            <button phx-click="filter_tx_type" phx-value-type={type}
+                    class={["px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                      if(@tx_type_filter == type,
+                        do: "bg-#{color}-100 border-#{color}-400 text-#{color}-700 ring-2 ring-#{color}-300",
+                        else: "bg-white border-gray-200 text-gray-600 hover:bg-gray-50")]}>
+              <%= label %>
+            </button>
+          <% end %>
+        </div>
+
+        <div class="bg-white rounded-lg border overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-left">
+              <tr>
+                <th class="px-4 py-3">Type</th>
+                <th class="px-4 py-3">Amount</th>
+                <th class="px-4 py-3">Description</th>
+                <th class="px-4 py-3">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= if @transactions == [] do %>
+                <tr>
+                  <td colspan="4" class="px-4 py-6 text-center text-gray-400">No transactions</td>
+                </tr>
+              <% end %>
+              <%= for tx <- @transactions do %>
+                <tr class="border-t">
+                  <td class="px-4 py-3">
+                    <span class={["px-2 py-1 rounded-full text-xs font-medium", tx_type_badge(tx.type)]}>
+                      <%= tx_type_label(tx.type) %>
+                    </span>
+                  </td>
+                  <td class={["px-4 py-3 font-semibold tabular-nums", tx_amount_class(tx.amount)]}>
+                    <%= tx_amount(tx.amount) %>
+                  </td>
+                  <td class="px-4 py-3 text-gray-500 text-xs"><%= tx.description %></td>
+                  <td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
+                    <%= Calendar.strftime(tx.inserted_at, "%b %d, %Y %H:%M") %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+          <div class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500">
+            <span>Showing <%= length(@transactions) %> per page · newest first</span>
+            <div class="flex gap-2">
+              <button phx-click="tx_prev" disabled={@tx_cursors == []}
+                      class={["px-3 py-1 rounded border text-sm", if(@tx_cursors == [], do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                ← Prev
+              </button>
+              <button phx-click="tx_next" disabled={is_nil(@tx_next_cursor)}
+                      class={["px-3 py-1 rounded border text-sm", if(is_nil(@tx_next_cursor), do: "text-gray-300 border-gray-200 cursor-not-allowed", else: "text-gray-600 hover:bg-gray-50")]}>
+                Next →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     """
   end
@@ -343,4 +440,26 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
 
   defp flash_class(:ok), do: "bg-green-50 text-green-700 border-green-200"
   defp flash_class(:error), do: "bg-red-50 text-red-700 border-red-200"
+
+  defp tx_type_badge("deposit"), do: "bg-green-100 text-green-700"
+  defp tx_type_badge("refund"), do: "bg-blue-100 text-blue-700"
+  defp tx_type_badge("payroll_deduction"), do: "bg-red-100 text-red-700"
+  defp tx_type_badge(_), do: "bg-gray-100 text-gray-600"
+
+  defp tx_type_label("deposit"), do: "Deposit"
+  defp tx_type_label("refund"), do: "Refund"
+  defp tx_type_label("payroll_deduction"), do: "Deduction"
+  defp tx_type_label(t), do: t
+
+  defp tx_amount_class(amount) do
+    if Decimal.positive?(amount), do: "text-green-700", else: "text-red-600"
+  end
+
+  defp tx_amount(amount) do
+    if Decimal.positive?(amount) do
+      "+ #{format_money(amount)}"
+    else
+      "− #{format_money(Decimal.abs(amount))}"
+    end
+  end
 end
