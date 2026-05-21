@@ -7,6 +7,7 @@ defmodule GlobalPayroll.Ledger do
   end
 
   # Credits the company balance — positive amount.
+  # Facade for the create_company_transaction function
   def deposit(company_id, amount, reference_id, description \\ "Deposit") do
     create_company_transaction(%{
       company_id: company_id,
