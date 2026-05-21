@@ -24,12 +24,12 @@ defmodule GlobalPayroll.Queue do
         [id: id, message_body: Jason.encode!(%{job: "execute_payment", intent_id: id})]
       end)
       |> Enum.chunk_every(10) #sqs limit is 10 messages per batch send
-      |> Task.async_stream(
+      |> Task.async_stream( #use async stream so we know if any batch failed
         fn chunk ->
           ExAws.SQS.send_message_batch(@payroll_jobs, chunk)
           |> request_with_retry()
         end,
-        max_concurrency: 10,
+        max_concurrency: 10, #10 concurrent batches
         ordered: false,
         timeout: 30_000
       ) #async stream to send messages in parallel, ordered is false because we don't care about the order of the messages
