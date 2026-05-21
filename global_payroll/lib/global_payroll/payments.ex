@@ -323,14 +323,6 @@ defmodule GlobalPayroll.Payments do
         retry_count: @max_retries
       })
     end)
-    |> Multi.run(:ledger, fn _repo, %{lock: locked} ->
-      Ledger.refund(
-        locked.company_id,
-        Decimal.add(locked.net_salary, locked.platform_fee),
-        locked.id,
-        "Refund for failed payment to employee #{locked.employee_id}"
-      )
-    end)
     |> Repo.transaction()
     |> case do
       {:ok, _} ->
