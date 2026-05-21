@@ -17,11 +17,11 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
           BroadwaySQS.Producer,
           queue_url: @queue_url, receive_interval: 200, visibility_timeout: 120
         },
-        concurrency: 5
+        concurrency: 5 #concurrently pulling messages from the queue
       ],
       processors: [
         default: [
-          concurrency: 25
+          concurrency: 25 #concurrently processing messages
         ]
       ]
     )
@@ -45,12 +45,15 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
             message
 
           {:error, reason} when reason in [:already_settled, :not_found] ->
+            # If the intent is already settled or not found, ack the message and stop processing
             message
 
           {:error, reason} ->
+            # any other error, retry the message
             Message.failed(message, inspect(reason))
         end
 
+      # Guard clauses
       {:ok, _} ->
         Message.failed(message, "unknown_job")
 
