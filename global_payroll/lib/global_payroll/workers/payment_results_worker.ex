@@ -21,7 +21,7 @@ defmodule GlobalPayroll.Workers.PaymentResultsWorker do
       ],
       processors: [
         default: [
-          concurrency: 50
+          concurrency: 25
         ]
       ]
     )
