@@ -17,7 +17,7 @@ defmodule GlobalPayroll.PaymentsTest do
       assert Decimal.equal?(result.payslip.net_salary, intent.net_salary)
     end
 
-    test "deducts net salary from the company ledger" do
+    test "deducts net salary and platform fee from the company ledger" do
       {company, _run, intent} = setup_paying_intent()
       Ledger.deposit(company.id, Decimal.new("10000"), Ecto.UUID.generate())
       balance_before = Companies.get_company_balance(company.id)
@@ -25,7 +25,7 @@ defmodule GlobalPayroll.PaymentsTest do
       Payments.process_result(%{"intent_id" => intent.id, "status" => "succeeded"})
 
       balance_after = Companies.get_company_balance(company.id)
-      expected = Decimal.sub(balance_before, intent.net_salary)
+      expected = Decimal.sub(balance_before, Decimal.add(intent.net_salary, intent.platform_fee))
       assert Decimal.equal?(balance_after, expected)
     end
 
@@ -39,7 +39,7 @@ defmodule GlobalPayroll.PaymentsTest do
   end
 
   describe "process_result/1 — failure at max retries" do
-    test "marks intent as failed and issues a refund to the company ledger" do
+    test "marks intent as failed without crediting an uncharged refund" do
       {company, _run, intent} = setup_paying_intent(retry_count: 2)
       balance_before = Companies.get_company_balance(company.id)
 
@@ -54,7 +54,30 @@ defmodule GlobalPayroll.PaymentsTest do
       assert result.status == "failed"
 
       balance_after = Companies.get_company_balance(company.id)
-      assert Decimal.compare(balance_after, balance_before) == :gt
+      assert Decimal.equal?(balance_after, balance_before)
+    end
+
+    test "webhook failures at max retries do not credit an uncharged refund" do
+      {company, _run, intent} = setup_paying_intent(retry_count: 2)
+      provider_payment_id = "provider-#{intent.id}"
+
+      intent
+      |> GlobalPayroll.Payrolls.PayrollIntent.changeset(%{provider_payment_id: provider_payment_id})
+      |> GlobalPayroll.Repo.update!()
+
+      balance_before = Companies.get_company_balance(company.id)
+
+      Payments.handle_webhook_event(%{
+        "payment_id" => provider_payment_id,
+        "status" => "failed",
+        "error" => "timeout"
+      })
+
+      {:ok, result} = Payrolls.get_intent_with_preloads(intent.id)
+      assert result.status == "failed"
+
+      balance_after = Companies.get_company_balance(company.id)
+      assert Decimal.equal?(balance_after, balance_before)
     end
 
     test "is idempotent: returns already_settled if intent is already failed" do

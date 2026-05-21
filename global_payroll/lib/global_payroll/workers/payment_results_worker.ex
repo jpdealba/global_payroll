@@ -4,18 +4,18 @@ defmodule GlobalPayroll.Workers.PaymentResultsWorker do
   alias Broadway.Message
   alias GlobalPayroll.Payments
 
-  @queue_url Application.compile_env!(
-               :global_payroll,
-               [:queues, :payment_results]
-             )
-
   def start_link(_opts) do
+    queue_url =
+      :global_payroll
+      |> Application.fetch_env!(:queues)
+      |> Keyword.fetch!(:payment_results)
+
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
       producer: [
         module: {
           BroadwaySQS.Producer,
-          queue_url: @queue_url, receive_interval: 200, visibility_timeout: 120
+          queue_url: queue_url, receive_interval: 200, visibility_timeout: 600
         },
         concurrency: 5
       ],

@@ -1,18 +1,16 @@
 defmodule GlobalPayroll.Queue do
-  @payroll_jobs Application.compile_env(:global_payroll, [:queues, :payroll_jobs])
-  @payment_results Application.compile_env(:global_payroll, [:queues, :payment_results])
   @max_send_retries 5
 
   def enqueue_calculate_payroll(run_id) do
-    send_message(@payroll_jobs, %{job: "calculate_payroll", run_id: run_id})
+    send_message(payroll_jobs_queue(), %{job: "calculate_payroll", run_id: run_id})
   end
 
   def enqueue_payment_result(event) do
-    send_message(@payment_results, event)
+    send_message(payment_results_queue(), event)
   end
 
   def enqueue_execute_payment(intent_id) do
-    send_message(@payroll_jobs, %{job: "execute_payment", intent_id: intent_id})
+    send_message(payroll_jobs_queue(), %{job: "execute_payment", intent_id: intent_id})
   end
 
   def enqueue_execute_payments(intent_ids) do
@@ -24,7 +22,7 @@ defmodule GlobalPayroll.Queue do
       |> Enum.chunk_every(10)
       |> Task.async_stream(
         fn chunk ->
-          ExAws.SQS.send_message_batch(@payroll_jobs, chunk)
+          ExAws.SQS.send_message_batch(payroll_jobs_queue(), chunk)
           |> request_with_retry()
         end,
         max_concurrency: 10,
@@ -73,4 +71,13 @@ defmodule GlobalPayroll.Queue do
   end
 
   defp send_backoff_ms(attempt), do: min(200 * attempt * attempt, 2_000)
+
+  defp payroll_jobs_queue, do: queue_url(:payroll_jobs)
+  defp payment_results_queue, do: queue_url(:payment_results)
+
+  defp queue_url(name) do
+    :global_payroll
+    |> Application.fetch_env!(:queues)
+    |> Keyword.fetch!(name)
+  end
 end

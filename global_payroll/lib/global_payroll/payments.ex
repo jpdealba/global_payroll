@@ -18,7 +18,8 @@ defmodule GlobalPayroll.Payments do
 
   def execute_payment(intent_id) do
     with {:ok, intent} <- fetch_intent(intent_id),
-         :ok <- guard_already_settled(intent) do
+         :ok <- guard_already_settled(intent),
+         :ok <- guard_run_paying(intent) do
       attempt_payment(intent)
     end
   end
@@ -28,7 +29,7 @@ defmodule GlobalPayroll.Payments do
          :ok <- guard_already_settled(intent) do
       case status do
         "succeeded" -> on_success(intent)
-        "failed" -> on_max_retries(intent, Map.get(event, "error", "provider reported failure"))
+        "failed" -> on_failure(intent, intent.retry_count + 1, provider_error(event))
         _ -> {:error, :unknown_status}
       end
     end
@@ -76,6 +77,14 @@ defmodule GlobalPayroll.Payments do
 
   defp guard_already_settled(_), do: :ok
 
+  defp guard_run_paying(intent) do
+    case Repo.get(PayrollRun, intent.payroll_run_id) do
+      %{status: "paying"} -> :ok
+      %{status: status} -> {:error, {:run_not_paying, status}}
+      nil -> {:error, :not_found}
+    end
+  end
+
   # --- Execute payment ---
 
   defp attempt_payment(%{status: "processing"} = intent) do
@@ -89,11 +98,11 @@ defmodule GlobalPayroll.Payments do
         resume_after_provider_failure(intent, attempt.error)
 
       nil ->
-        perform_payment_attempt(intent, attempt_number)
+        {:ok, :already_processing}
     end
   end
 
-  defp attempt_payment(intent) do
+  defp attempt_payment(%{status: "pending"} = intent) do
     attempt_number = intent.retry_count + 1
 
     case get_attempt(intent.id, attempt_number) do
@@ -104,18 +113,37 @@ defmodule GlobalPayroll.Payments do
         resume_after_provider_failure(intent, attempt.error)
 
       nil ->
-        perform_payment_attempt(intent, attempt_number)
+        case claim_pending_intent(intent, attempt_number) do
+          {:ok, claimed} -> perform_payment_attempt(claimed, attempt_number)
+          {:error, :already_claimed} -> {:ok, :already_processing}
+        end
+    end
+  end
+
+  defp attempt_payment(intent), do: {:error, {:invalid_status, intent.status}}
+
+  defp claim_pending_intent(intent, attempt_number) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    key = idempotency_key(intent.id, attempt_number)
+
+    {claimed_count, _} =
+      PayrollIntent
+      |> where([i], i.id == ^intent.id and i.status == "pending")
+      |> Repo.update_all(
+        set: [
+          idempotency_key: key,
+          status: "processing",
+          updated_at: now
+        ]
+      )
+
+    case claimed_count do
+      1 -> {:ok, Repo.get!(PayrollIntent, intent.id)}
+      0 -> {:error, :already_claimed}
     end
   end
 
   defp perform_payment_attempt(intent, attempt_number) do
-    key = "intent-#{intent.id}-attempt-#{attempt_number}"
-
-    intent =
-      intent
-      |> PayrollIntent.changeset(%{idempotency_key: key, status: "processing"})
-      |> Repo.update!()
-
     result = GlobalPayroll.Payments.MockPaymentProvider.call(intent)
 
     with {:ok, _} <- record_attempt(intent, attempt_number, result),
@@ -180,9 +208,11 @@ defmodule GlobalPayroll.Payments do
   end
 
   defp mock_provider_id(intent, attempt_number) do
-    key = intent.idempotency_key || "intent-#{intent.id}-attempt-#{attempt_number}"
+    key = intent.idempotency_key || idempotency_key(intent.id, attempt_number)
     "mock-provider-#{key}"
   end
+
+  defp idempotency_key(intent_id, attempt_number), do: "intent-#{intent_id}-attempt-#{attempt_number}"
 
   # --- Attempts ---
 
@@ -323,14 +353,6 @@ defmodule GlobalPayroll.Payments do
         retry_count: @max_retries
       })
     end)
-    |> Multi.run(:ledger, fn _repo, %{lock: locked} ->
-      Ledger.refund(
-        locked.company_id,
-        Decimal.add(locked.net_salary, locked.platform_fee),
-        locked.id,
-        "Refund for failed payment to employee #{locked.employee_id}"
-      )
-    end)
     |> Repo.transaction()
     |> case do
       {:ok, _} ->
@@ -343,6 +365,8 @@ defmodule GlobalPayroll.Payments do
         {:error, err}
     end
   end
+
+  defp provider_error(event), do: Map.get(event, "error", "provider reported failure")
 
   # --- Reconciliation ---
 

@@ -55,6 +55,22 @@ if config_env() == :prod do
 
   config :global_payroll, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  payroll_jobs_queue_url =
+    System.get_env("PAYROLL_JOBS_QUEUE_URL") ||
+      raise """
+      environment variable PAYROLL_JOBS_QUEUE_URL is missing.
+      """
+
+  payment_results_queue_url =
+    System.get_env("PAYMENT_RESULTS_QUEUE_URL") ||
+      raise """
+      environment variable PAYMENT_RESULTS_QUEUE_URL is missing.
+      """
+
+  config :global_payroll, :queues,
+    payroll_jobs: payroll_jobs_queue_url,
+    payment_results: payment_results_queue_url
+
   config :global_payroll, GlobalPayrollWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [

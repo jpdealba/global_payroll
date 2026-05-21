@@ -19,6 +19,7 @@ config :global_payroll, :queues,
 config :global_payroll, GlobalPayrollWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
+  pubsub_server: GlobalPayroll.PubSub,
   render_errors: [
     formats: [json: GlobalPayrollWeb.ErrorJSON],
     layout: false

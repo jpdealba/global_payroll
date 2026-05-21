@@ -4,18 +4,18 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
   alias Broadway.Message
   alias GlobalPayroll.{Payrolls, Payments}
 
-  @queue_url Application.compile_env!(
-               :global_payroll,
-               [:queues, :payroll_jobs]
-             )
-
   def start_link(_opts) do
+    queue_url =
+      :global_payroll
+      |> Application.fetch_env!(:queues)
+      |> Keyword.fetch!(:payroll_jobs)
+
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
       producer: [
         module: {
           BroadwaySQS.Producer,
-          queue_url: @queue_url, receive_interval: 200, visibility_timeout: 120
+          queue_url: queue_url, receive_interval: 200, visibility_timeout: 600
         },
         concurrency: 5
       ],
@@ -44,7 +44,7 @@ defmodule GlobalPayroll.Workers.PayrollWorker do
           {:ok, _} ->
             message
 
-          {:error, reason} when reason in [:already_settled, :not_found] ->
+          {:error, reason} when reason in [:already_settled, :already_processing, :not_found] ->
             message
 
           {:error, reason} ->

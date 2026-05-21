@@ -119,11 +119,10 @@ defmodule GlobalPayroll.Payrolls do
 
   def approve_run(run_id) do
     with {:ok, run} <- get_run(run_id),
-         :ok <- validate_transition(run.status, "approved"),
-         {:ok, run} <- transition(run, "approved"),
-         :ok <- validate_transition(run.status, "paying"),
+         :ok <- validate_approvable(run.status),
+         {:ok, run} <- ensure_approved(run),
+         :ok <- enqueue_payments(run.id),
          {:ok, run} <- transition(run, "paying") do
-      Task.start(fn -> enqueue_payments(run.id) end)
       {:ok, run}
     end
   end
@@ -193,61 +192,40 @@ defmodule GlobalPayroll.Payrolls do
 
   defp insert_intents_in_chunks(run, total) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+    rows = build_intent_rows(run, now)
 
-    Repo.delete_all(from(i in PayrollIntent, where: i.payroll_run_id == ^run.id))
+    Repo.transaction(fn ->
+      Repo.delete_all(from(i in PayrollIntent, where: i.payroll_run_id == ^run.id))
 
-    tax_rules =
-      from(t in CountryTaxRule,
-        where:
-          t.id in subquery(
-            from(e in Employee,
-              where: e.company_id == ^run.company_id and e.status == "active",
-              select: e.country_tax_id
-            )
-          )
-      )
-      |> Repo.all()
-      |> Map.new(fn t -> {t.id, t} end)
+      rows
+      |> Enum.chunk_every(@chunk_size)
+      |> Enum.each(&Repo.insert_all(PayrollIntent, &1))
 
-    employee_ids =
-      Employee
-      |> where([e], e.company_id == ^run.company_id and e.status == "active")
-      |> select([e], e.id)
-      |> Repo.all()
-
-    employee_ids
-    |> Enum.chunk_every(@chunk_size)
-    |> Enum.each(fn chunk_ids ->
-      rows =
-        Employee
-        |> where([e], e.id in ^chunk_ids)
-        |> Repo.all()
-        |> Task.async_stream(
-          fn e ->
-            build_intent_row(
-              %{e | country_tax_rule: Map.fetch!(tax_rules, e.country_tax_id)},
-              run,
-              now
-            )
-          end,
-          ordered: false
-        )
-        |> Enum.map(fn {:ok, row} -> row end)
-
-      Repo.insert_all(PayrollIntent, rows)
+      run
+      |> PayrollRun.changeset(%{
+        status: "pending_approval",
+        total_amount: total,
+        ran_at: now
+      })
+      |> Repo.update()
+      |> case do
+        {:ok, updated_run} -> updated_run
+        {:error, reason} -> Repo.rollback(reason)
+      end
     end)
-
-    run
-    |> PayrollRun.changeset(%{
-      status: "pending_approval",
-      total_amount: total,
-      ran_at: now
-    })
-    |> Repo.update()
     |> case do
-      {:ok, _} -> {:ok, run}
+      {:ok, updated_run} -> {:ok, updated_run}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp build_intent_rows(run, now) do
+    Employee
+    |> where([e], e.company_id == ^run.company_id and e.status == "active")
+    |> preload(:country_tax_rule)
+    |> Repo.all()
+    |> Task.async_stream(&build_intent_row(&1, run, now), ordered: false)
+    |> Enum.map(fn {:ok, row} -> row end)
   end
 
   defp build_intent_row(employee, run, now) do
@@ -296,8 +274,14 @@ defmodule GlobalPayroll.Payrolls do
   defp validate_cancellable(status) when status in ["draft", "pending_approval"], do: :ok
   defp validate_cancellable(status), do: {:error, "cannot cancel run in status: #{status}"}
 
+  defp validate_approvable(status) when status in ["pending_approval", "approved"], do: :ok
+  defp validate_approvable(status), do: {:error, "cannot approve run in status: #{status}"}
+
   defp maybe_transition_to_calculating(%{status: "calculating"} = run), do: {:ok, run}
   defp maybe_transition_to_calculating(run), do: transition(run, "calculating")
+
+  defp ensure_approved(%{status: "approved"} = run), do: {:ok, run}
+  defp ensure_approved(run), do: transition(run, "approved")
 
   defp validate_transition(from, to) do
     if @valid_transitions[from] == to do

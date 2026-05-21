@@ -14,6 +14,7 @@ defmodule GlobalPayroll.Application do
       GlobalPayrollWeb.Telemetry,
       GlobalPayroll.Repo,
       {DNSCluster, query: Application.get_env(:global_payroll, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: GlobalPayroll.PubSub},
       GlobalPayroll.Workers.PayrollWorker,
       GlobalPayroll.Workers.PaymentResultsWorker,
       GlobalPayroll.Workers.InvoiceWorker,
