@@ -46,14 +46,18 @@ defmodule GlobalPayroll.Companies do
     {txs, tx_next_cursor(txs, per_page)}
   end
 
+  # No cursor means first page — return all records from the beginning.
   defp apply_tx_cursor(query, nil), do: query
 
+  # Cursor present — skip everything up to and including the last seen record.
   defp apply_tx_cursor(query, {ts, id}) do
     where(query, [t], t.inserted_at < ^ts or (t.inserted_at == ^ts and t.id < ^id))
   end
 
+  # No more pages — returns nil when results are fewer than a full page.
   defp tx_next_cursor(results, per_page) when length(results) < per_page, do: nil
 
+  # Full page returned — cursor points to the last record so the next call starts after it.
   defp tx_next_cursor(results, _) do
     last = List.last(results)
     {last.inserted_at, last.id}
