@@ -2,13 +2,12 @@
 # │              Local Services                  │
 # │                                              │
 # │  PostgreSQL  → localhost:5432                │
-# │  SQS API     → http://localhost:9324         │
-# │  SQS UI      → http://localhost:9325         │
+# │  SQS API     → http://localhost:4566         │
 # │  DB UI       → http://localhost:8080         │
 # │                                              │
 # │  Adminer login:                              │
 # │    System:   PostgreSQL                      │
-# │    Server:   host.docker.internal                        │
+# │    Server:   host.docker.internal            │
 # │    User:     postgres                        │
 # │    Password: postgres                        │
 # │    Database: global_payroll_dev              │
@@ -17,6 +16,9 @@
 # │    payroll-jobs                              │
 # │    payment-results                           │
 # └─────────────────────────────────────────────┘
+#
+# Start: docker compose up -d
+# Run:   cd global_payroll && mix phx.server
 
 services:
   postgres:
@@ -25,18 +27,17 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: global_payroll_dev
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_MAX_CONNECTIONS: 200
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   sqs:
-    image: roribio16/alpine-sqs:latest
+    image: floci/floci:latest
     ports:
-      - "9324:9324"  # SQS API
-      - "9325:9325"  # UI (nota: la UI no refleja deletes en tiempo real, usar curl para verificar)
-    volumes:
-      - ./elasticmq.conf:/opt/custom/elasticmq.conf
+      - "4566:4566"
 
   adminer:
     image: adminer:latest

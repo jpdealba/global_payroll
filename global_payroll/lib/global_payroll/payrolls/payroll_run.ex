@@ -18,7 +18,6 @@ defmodule GlobalPayroll.Payrolls.PayrollRun do
     timestamps(type: :utc_datetime)
   end
 
-  @doc false
   def changeset(payroll_run, attrs) do
     payroll_run
     |> cast(attrs, [:company_id, :pay_period, :status, :error, :total_amount, :ran_at])

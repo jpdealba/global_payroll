@@ -73,6 +73,5 @@ defmodule GlobalPayrollWeb.Router do
       live_dashboard "/dashboard", metrics: GlobalPayrollWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
-
   end
 end

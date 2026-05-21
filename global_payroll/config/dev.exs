@@ -5,10 +5,11 @@ config :global_payroll, GlobalPayroll.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
+  port: 5432,
   database: "global_payroll_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  pool_size: 45
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -58,7 +59,7 @@ config :ex_aws,
 config :ex_aws, :sqs,
   scheme: "http://",
   host: "localhost",
-  port: 9324
+  port: 4566
 
 # Enable dev routes for dashboard and mailbox
 config :global_payroll, dev_routes: true

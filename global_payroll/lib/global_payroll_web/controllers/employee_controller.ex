@@ -13,16 +13,24 @@ defmodule GlobalPayrollWeb.EmployeeController do
 
   def create(conn, params) do
     case Employees.create_employee(params) do
-      {:ok, employee} -> conn |> put_status(:created) |> render(:show, employee: employee)
-      {:error, changeset} -> conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
+      {:ok, employee} ->
+        conn |> put_status(:created) |> render(:show, employee: employee)
+
+      {:error, changeset} ->
+        conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
     end
   end
 
   def update(conn, %{"id" => id} = params) do
     case Employees.update_employee(id, Map.drop(params, ["id"])) do
-      {:ok, employee} -> render(conn, :show, employee: employee)
-      {:error, :not_found} -> conn |> put_status(:not_found) |> json(%{error: "not found"})
-      {:error, changeset} -> conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
+      {:ok, employee} ->
+        render(conn, :show, employee: employee)
+
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "not found"})
+
+      {:error, changeset} ->
+        conn |> put_status(:unprocessable_entity) |> render(:error, changeset: changeset)
     end
   end
 

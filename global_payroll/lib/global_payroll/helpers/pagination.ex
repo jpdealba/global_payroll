@@ -24,9 +24,11 @@ defmodule GlobalPayroll.Pagination do
   # Cursor present — skip everything up to and including the last seen record.
   # Uses inserted_at as the primary sort key, id as tiebreaker for same-timestamp records.
   defp apply_cursor(query, {inserted_at, id}) do
-    where(query, [q],
+    where(
+      query,
+      [q],
       q.inserted_at > ^inserted_at or
-      (q.inserted_at == ^inserted_at and q.id > ^id)
+        (q.inserted_at == ^inserted_at and q.id > ^id)
     )
   end
 end

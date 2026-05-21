@@ -5,9 +5,11 @@ defmodule GlobalPayroll.Repo.Migrations.CreateCompanies do
     create table(:companies, primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :name, :string, null: false
-      add :country, :string, null: false        # ISO code e.g. "MX"
+      # ISO code e.g. "MX"
+      add :country, :string, null: false
       add :billing_email, :string, null: false
-      add :status, :string, null: false, default: "pending"  # pending | active | inactive
+      # pending | active | inactive
+      add :status, :string, null: false, default: "pending"
 
       timestamps()
     end

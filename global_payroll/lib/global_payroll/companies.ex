@@ -33,11 +33,29 @@ defmodule GlobalPayroll.Companies do
     |> Repo.one()
   end
 
-  def list_transactions(company_id, cursor \\ nil, per_page \\ 20) do
-    CompanyTransaction
-    |> where([t], t.company_id == ^company_id)
-    |> Pagination.paginate(cursor, per_page)
-    |> Repo.all()
-    |> then(&{&1, Pagination.next_cursor(&1, per_page)})
+  def list_transactions(company_id, cursor \\ nil, per_page \\ 25, type \\ nil) do
+    txs =
+      CompanyTransaction
+      |> where([t], t.company_id == ^company_id)
+      |> then(fn q -> if type, do: where(q, [t], t.type == ^type), else: q end)
+      |> apply_tx_cursor(cursor)
+      |> order_by([t], desc: t.inserted_at, desc: t.id)
+      |> limit(^per_page)
+      |> Repo.all()
+
+    {txs, tx_next_cursor(txs, per_page)}
+  end
+
+  defp apply_tx_cursor(query, nil), do: query
+
+  defp apply_tx_cursor(query, {ts, id}) do
+    where(query, [t], t.inserted_at < ^ts or (t.inserted_at == ^ts and t.id < ^id))
+  end
+
+  defp tx_next_cursor(results, per_page) when length(results) < per_page, do: nil
+
+  defp tx_next_cursor(results, _) do
+    last = List.last(results)
+    {last.inserted_at, last.id}
   end
 end

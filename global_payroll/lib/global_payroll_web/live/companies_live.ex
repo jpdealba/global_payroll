@@ -63,7 +63,8 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
   end
 
   def handle_info({:seed_done, company_id}, socket) do
-    {:noreply, socket |> assign(seed_progress: nil) |> push_navigate(to: ~p"/app/companies/#{company_id}")}
+    {:noreply,
+     socket |> assign(seed_progress: nil) |> push_navigate(to: ~p"/app/companies/#{company_id}")}
   end
 
   # --- Seed helpers ---
@@ -72,12 +73,14 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
     n = :rand.uniform(99_999)
     slug = template.name |> String.downcase() |> String.replace(~r/[^a-z]/, "")
 
-    {:ok, company} = Companies.create_company(%{
-      name: template.name,
-      country: template.country,
-      billing_email: "billing.#{n}@#{slug}.com",
-      registration_number: "REG-#{n}"
-    })
+    {:ok, company} =
+      Companies.create_company(%{
+        name: template.name,
+        country: template.country,
+        billing_email: "billing.#{n}@#{slug}.com",
+        registration_number: "REG-#{n}"
+      })
+
     Companies.update_company(company.id, %{"status" => "active"})
 
     {tax_rules, _} = Taxes.list_country_tax_rules()
@@ -87,7 +90,8 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
     total_count
     |> into_chunks(@chunk_size)
     |> Enum.reduce(0, fn chunk_count, inserted ->
-      emp_rows = Enum.map(1..chunk_count, fn _ -> build_employee_row(company.id, tax_ids, now) end)
+      emp_rows =
+        Enum.map(1..chunk_count, fn _ -> build_employee_row(company.id, tax_ids, now) end)
 
       {_, employees} =
         GlobalPayroll.Repo.insert_all(
@@ -155,13 +159,13 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
     ~H"""
     <div>
       <h1 class="text-2xl font-bold mb-6">Companies</h1>
-
+    
       <%= if @alert do %>
         <div class={["mb-4 p-3 rounded text-sm border", flash_class(elem(@alert, 0))]}>
           <%= elem(@alert, 1) %>
         </div>
       <% end %>
-
+    
       <div class="mb-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
         <h2 class="font-semibold mb-3 text-indigo-800">Generate Demo Data</h2>
         <%= if @seed_progress do %>
@@ -198,7 +202,7 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
           </form>
         <% end %>
       </div>
-
+    
       <form phx-submit="create_company" class="mb-8 p-4 bg-white rounded-lg border">
         <h2 class="font-semibold mb-3">New Company</h2>
         <div class="grid grid-cols-2 gap-3">
@@ -217,7 +221,7 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
           </div>
         </div>
       </form>
-
+    
       <div class="bg-white rounded-lg border overflow-hidden">
         <table class="w-full text-sm">
           <thead class="bg-gray-50 text-gray-500 text-left">

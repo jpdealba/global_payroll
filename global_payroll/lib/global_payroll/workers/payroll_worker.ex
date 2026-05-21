@@ -1,48 +1,61 @@
 defmodule GlobalPayroll.Workers.PayrollWorker do
   use Broadway
 
+  alias Broadway.Message
   alias GlobalPayroll.{Payrolls, Payments}
 
-  @queue_url Application.compile_env(:global_payroll, [:queues, :payroll_jobs])
+  @queue_url Application.compile_env!(
+               :global_payroll,
+               [:queues, :payroll_jobs]
+             )
 
   def start_link(_opts) do
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
       producer: [
-        module:
-          {BroadwaySQS.Producer,
-           queue_url: @queue_url,
-           config: [
-             access_key_id: "local",
-             secret_access_key: "local",
-             region: "us-east-1",
-             sqs: [scheme: "http://", host: "localhost", port: 9324]
-           ]}
+        module: {
+          BroadwaySQS.Producer,
+          queue_url: @queue_url, receive_interval: 200, visibility_timeout: 120
+        },
+        concurrency: 5
       ],
       processors: [
-        default: [concurrency: 10]
+        default: [
+          concurrency: 25
+        ]
       ]
     )
   end
 
-  @impl Broadway
+  @impl true
   def handle_message(_, message, _) do
-    case Jason.decode!(message.data) do
-      %{"job" => "calculate_payroll", "run_id" => run_id} ->
+    case Jason.decode(message.data) do
+      {:ok, %{"job" => "calculate_payroll", "run_id" => run_id}} ->
         case Payrolls.calculate_run(run_id) do
-          {:ok, _} -> message
-          {:error, reason} -> Broadway.Message.failed(message, inspect(reason))
+          {:ok, _} ->
+            message
+
+          {:error, reason} ->
+            Message.failed(message, inspect(reason))
         end
 
-      %{"job" => "execute_payment", "intent_id" => intent_id} ->
+      {:ok, %{"job" => "execute_payment", "intent_id" => intent_id}} ->
         case Payments.execute_payment(intent_id) do
-          {:ok, _} -> message
-          {:error, reason} when reason in [:already_settled, :not_found] -> message
-          {:error, reason} -> Broadway.Message.failed(message, inspect(reason))
+          {:ok, _} ->
+            message
+
+          {:error, reason} when reason in [:already_settled, :not_found] ->
+            message
+
+          {:error, reason} ->
+            Message.failed(message, inspect(reason))
         end
 
-      _ ->
-        Broadway.Message.failed(message, "unknown job type")
+      {:ok, _} ->
+        Message.failed(message, "unknown_job")
+
+      {:error, _} ->
+        Message.failed(message, "invalid_json")
     end
   end
 end
