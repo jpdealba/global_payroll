@@ -7,6 +7,7 @@ defmodule GlobalPayroll.Application do
 
   @impl true
   def start(_type, _args) do
+    # As we are using sqs locally, we need to create the queues manually
     ExAws.SQS.create_queue("payroll-jobs") |> ExAws.request()
     ExAws.SQS.create_queue("payment-results") |> ExAws.request()
 

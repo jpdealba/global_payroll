@@ -3,7 +3,8 @@
 # │                                              │
 # │  PostgreSQL  → localhost:5432                │
 # │  SQS API     → http://localhost:4566         │
-# │  DB UI       → http://localhost:8080         │
+# │  DB UI       → http://localhost:8080
+# │  Telemetry Dashboard   → http://localhost:4000/dev/dashboard      │
 # │                                              │
 # │  Adminer login:                              │
 # │    System:   PostgreSQL                      │
