@@ -39,26 +39,31 @@ defmodule GlobalPayroll.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      # Core phoenix
       {:phoenix, "~> 1.8.1"},
+      {:bandit, "~> 1.5"},
+      {:jason, "~> 1.2"},
+      # Database
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
-      {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:swoosh, "~> 1.15"},
-      {:req, "~> 0.5"},
-      {:telemetry_metrics, "~> 1.0"},
-      {:telemetry_poller, "~> 1.0"},
-      {:gettext, "~> 0.26"},
-      {:jason, "~> 1.2"},
-      {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"},
-      # AWS SQS — used for async payroll job queuing
+      # SQS broadway
       {:broadway, "~> 1.1"},
       {:broadway_sqs, "~> 0.7"},
       {:ex_aws, "~> 2.5"},
       {:ex_aws_sqs, "~> 3.4"},
       {:hackney, "~> 1.9"},
       {:sweet_xml, "~> 0.7"},
+      # Emails
+      {:swoosh, "~> 1.15"},
+      {:req, "~> 0.5"},
+      # Telemetry
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
+      # Other
+      {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:gettext, "~> 0.26"},
+      {:dns_cluster, "~> 0.2.0"},
       {:phoenix_live_view, "~> 1.0"}
     ]
   end
