@@ -13,20 +13,15 @@ defmodule GlobalPayroll.Workers.PaymentResultsWorker do
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
       producer: [
-        concurrency: 5,
-        module:
-          {BroadwaySQS.Producer,
-           queue_url: @queue_url,
-           receive_interval: 50,
-           max_number_of_messages: 10,
-           visibility_timeout: 120,
-           wait_time_seconds: 10}
+        module: {
+          BroadwaySQS.Producer,
+          queue_url: @queue_url, receive_interval: 200, visibility_timeout: 120
+        },
+        concurrency: 5
       ],
       processors: [
         default: [
-          concurrency: 50,
-          max_demand: 20,
-          min_demand: 10
+          concurrency: 50
         ]
       ]
     )
