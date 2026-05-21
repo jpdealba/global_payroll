@@ -62,7 +62,9 @@ defmodule GlobalPayroll.PaymentsTest do
       provider_payment_id = "provider-#{intent.id}"
 
       intent
-      |> GlobalPayroll.Payrolls.PayrollIntent.changeset(%{provider_payment_id: provider_payment_id})
+      |> GlobalPayroll.Payrolls.PayrollIntent.changeset(%{
+        provider_payment_id: provider_payment_id
+      })
       |> GlobalPayroll.Repo.update!()
 
       balance_before = Companies.get_company_balance(company.id)

@@ -212,7 +212,8 @@ defmodule GlobalPayroll.Payments do
     "mock-provider-#{key}"
   end
 
-  defp idempotency_key(intent_id, attempt_number), do: "intent-#{intent_id}-attempt-#{attempt_number}"
+  defp idempotency_key(intent_id, attempt_number),
+    do: "intent-#{intent_id}-attempt-#{attempt_number}"
 
   # --- Attempts ---
 
