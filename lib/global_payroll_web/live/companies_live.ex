@@ -26,11 +26,13 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
     {"Citi", "CITIUS33"}
   ]
 
+  # Loads all companies on mount
   def mount(_params, _session, socket) do
     {companies, _} = Companies.list_companies()
     {:ok, assign(socket, companies: companies, alert: nil, seed_progress: nil)}
   end
 
+  # Creates a new company and reloads the list
   def handle_event("create_company", params, socket) do
     case Companies.create_company(params) do
       {:ok, _} ->
@@ -42,12 +44,15 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
     end
   end
 
+  # Activates a company that is in "pending" status
   def handle_event("activate", %{"id" => id}, socket) do
     Companies.update_company(id, %{"status" => "active"})
     {companies, _} = Companies.list_companies()
     {:noreply, assign(socket, companies: companies, alert: {:ok, "Company activated"})}
   end
 
+  # Starts the seed process in a background Task so the UI stays responsive.
+  # Captures the LiveView pid to send progress messages back.
   def handle_event("seed", %{"preset" => preset_idx, "count" => count_str}, socket) do
     template = Enum.at(@preset_templates, String.to_integer(preset_idx))
     count = count_str |> String.to_integer() |> max(1) |> min(100_000)
@@ -58,10 +63,12 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
     {:noreply, assign(socket, seed_progress: {0, count})}
   end
 
+  # Updates the progress bar as the seed Task sends chunks
   def handle_info({:seed_progress, inserted, total}, socket) do
     {:noreply, assign(socket, seed_progress: {inserted, total})}
   end
 
+  # Seed finished — clears progress and navigates to the new company
   def handle_info({:seed_done, company_id}, socket) do
     {:noreply,
      socket |> assign(seed_progress: nil) |> push_navigate(to: ~p"/app/companies/#{company_id}")}
@@ -69,6 +76,8 @@ defmodule GlobalPayrollWeb.Live.CompaniesLive do
 
   # --- Seed helpers ---
 
+  # Creates the company and inserts employees + payment methods in chunks of 5000.
+  # Sends progress messages to the LiveView pid after each chunk.
   defp run_seed(lv_pid, template, total_count) do
     n = :rand.uniform(99_999)
     slug = template.name |> String.downcase() |> String.replace(~r/[^a-z]/, "")

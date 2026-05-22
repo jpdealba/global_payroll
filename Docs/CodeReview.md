@@ -12,15 +12,11 @@
 
 **9:45 - 10:15** — Router y tests por encima
 
-- ⬜ `lib/global_payroll_web/router.ex` — qué rutas expone, cuáles son REST vs LiveView
-- ⬜ `test/global_payroll/payments_test.exs` — ver qué casos cubre
-- ⬜ `test/global_payroll/payrolls_test.exs` — igual
+- LISTO
 
 **10:15 - 10:45** — LiveView rápido
 
-- ⬜ `lib/global_payroll_web/live/run_show_live.ex` — el más importante
-- ⬜ `lib/global_payroll_web/live/companies_live.ex`
-- ⬜ `lib/global_payroll_web/live/company_show_live.ex`
+- LISTO
 
 **10:45 - 11:00** — Práctica oral del flujo completo, una vez
 
