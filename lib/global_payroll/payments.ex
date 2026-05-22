@@ -71,6 +71,7 @@ defmodule GlobalPayroll.Payments do
   # Lock the intent for update to avoid race conditions
   defp lock_intent(id) do
     # We use it in the on_success and on_failure functions
+    # "FOR UPDATE SKIP LOCKED"
     from(i in PayrollIntent, where: i.id == ^id, lock: "FOR UPDATE")
     |> Repo.one()
   end
