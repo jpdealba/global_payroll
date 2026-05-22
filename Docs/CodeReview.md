@@ -20,7 +20,7 @@
 
 **10:45 - 11:00** — Práctica oral del flujo completo, una vez
 
-- Explicar el flujo de principio a fin sin ver el código
+- LISTO
 
 **11:00** — Para. A dormir.
 

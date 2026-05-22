@@ -1,4 +1,8 @@
 defmodule GlobalPayroll.Workers.InvoiceWorker do
+  # This worker is responsible for generating invoices for completed payroll runs
+  # It is run every minute and looks for "paying" runs with no intents in pending/processing
+  # and aggregates the totals, inserts an invoice, and updates the run to "completed"
+  # It also reconciles stuck intents that are in processing but have no payment attempts
   use GenServer
 
   alias GlobalPayroll.{Payrolls, Payments}
