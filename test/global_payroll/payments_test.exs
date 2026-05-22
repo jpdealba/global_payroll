@@ -5,6 +5,7 @@ defmodule GlobalPayroll.PaymentsTest do
   alias GlobalPayroll.Employees
 
   describe "process_result/1 — success" do
+    # Happy path
     test "marks intent as completed and creates a payslip" do
       {_company, _run, intent} = setup_paying_intent()
 
@@ -39,6 +40,7 @@ defmodule GlobalPayroll.PaymentsTest do
   end
 
   describe "process_result/1 — failure at max retries" do
+    # Failure path
     test "marks intent as failed and issues a refund to the company ledger" do
       {company, _run, intent} = setup_paying_intent(retry_count: 2)
       balance_before = Companies.get_company_balance(company.id)

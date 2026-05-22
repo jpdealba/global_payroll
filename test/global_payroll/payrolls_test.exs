@@ -5,6 +5,7 @@ defmodule GlobalPayroll.PayrollsTest do
   alias GlobalPayroll.Employees
 
   describe "cancel_run/1" do
+    # Happy path
     test "allows cancel in draft" do
       run = insert_run("draft")
       assert {:ok, %{status: "failed"}} = Payrolls.cancel_run(run.id)
@@ -23,6 +24,7 @@ defmodule GlobalPayroll.PayrollsTest do
   end
 
   describe "calculate_run/1" do
+    # Failure path
     test "fails when the company has no active employees" do
       company = insert_company()
       Ledger.deposit(company.id, Decimal.new("10000"), Ecto.UUID.generate())

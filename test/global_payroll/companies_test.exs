@@ -3,6 +3,9 @@ defmodule GlobalPayroll.CompaniesTest do
 
   alias GlobalPayroll.{Companies, Ledger}
 
+  # Tests for get_company_balance/1 — covers the zero balance edge case and the happy path
+  # (deposit + deduction + refund). Missing failure cases: negative balance, non-existent company, concurrent transactions.
+
   describe "get_company_balance/1" do
     test "returns zero when the company has no transactions" do
       {:ok, company} =

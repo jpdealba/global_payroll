@@ -165,6 +165,7 @@ defmodule GlobalPayroll.Payments do
     intent = Repo.get!(PayrollIntent, intent.id)
     provider_id = intent.provider_payment_id || mock_provider_id(intent, attempt_number)
 
+    # update the intent with the provider_payment_id if it doesn't have one
     intent =
       if intent.provider_payment_id do
         intent
@@ -187,8 +188,10 @@ defmodule GlobalPayroll.Payments do
   # --- Attempts ---
 
   defp record_attempt(intent, attempt_number, result) do
-    status = if match?({:ok, _}, result), do: "succeeded", else: "failed"
-    error = if match?({:error, _}, result), do: elem(result, 1), else: nil
+    {status, error} = case result do
+      {:ok, _} -> {"succeeded", nil}
+      {:error, reason} -> {"failed", reason}
+    end
 
     %PaymentAttempt{}
     |> PaymentAttempt.changeset(%{
@@ -204,6 +207,7 @@ defmodule GlobalPayroll.Payments do
         {:ok, attempt}
 
       {:error, %Ecto.Changeset{}} ->
+        # if the attempt already exists, return it, otherwise return an error
         case get_attempt(intent.id, attempt_number) do
           %PaymentAttempt{} = attempt -> {:ok, attempt}
           nil -> {:error, :attempt_insert_failed}
@@ -212,7 +216,7 @@ defmodule GlobalPayroll.Payments do
   end
 
   defp get_attempt(intent_id, attempt_number) do
-    Repo.get_by(PaymentAttempt, payroll_intent_id: intent_id, attempt_number: attempt_number)
+    Repo.get_by(PaymentAttempt, [payroll_intent_id: intent_id, attempt_number: attempt_number])
   end
 
   # --- Result handling ---
@@ -343,10 +347,10 @@ defmodule GlobalPayroll.Payments do
   end
 
   # Worker died after the provider responded but before the result was enqueued.
-  # The attempt exists in DB — resume from its result instead of calling the provider again.
+  # The attempt exists in DB. Resume from its result instead of calling the provider again.
   defp reconcile_processing_with_attempts do
     cutoff = stuck_cutoff()
-
+    # If a payment exists for the current retry number and the intent is in processing or pending
     from(pi in PayrollIntent,
       join: r in PayrollRun,
       on: r.id == pi.payroll_run_id,
@@ -359,11 +363,11 @@ defmodule GlobalPayroll.Payments do
     )
     |> Repo.all()
     |> Enum.each(fn {intent, attempt} ->
-      # reload to get the freshest state in case another process touched it
+      # reload to get the freshest state in case another process touched it (race condition)
       intent = Repo.get!(PayrollIntent, intent.id)
       case attempt.status do
-        "succeeded" -> resume_after_provider_success(intent, attempt.attempt_number)
-        "failed" -> resume_after_provider_failure(intent, attempt.error)
+        "succeeded" -> resume_after_provider_success(intent, attempt.attempt_number) # if the attempt succeeded, resume the payment
+        "failed" -> resume_after_provider_failure(intent, attempt.error) # if the attempt failed, dispatch the failure result to the payment-results queue
       end
     end)
   end
