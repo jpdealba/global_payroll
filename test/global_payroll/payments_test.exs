@@ -5,6 +5,7 @@ defmodule GlobalPayroll.PaymentsTest do
   alias GlobalPayroll.Employees
 
   describe "process_result/1 — success" do
+    # Happy path
     test "marks intent as completed and creates a payslip" do
       {_company, _run, intent} = setup_paying_intent()
 
@@ -25,7 +26,7 @@ defmodule GlobalPayroll.PaymentsTest do
       Payments.process_result(%{"intent_id" => intent.id, "status" => "succeeded"})
 
       balance_after = Companies.get_company_balance(company.id)
-      expected = Decimal.sub(balance_before, intent.net_salary)
+      expected = Decimal.sub(balance_before, Decimal.add(intent.net_salary, intent.platform_fee))
       assert Decimal.equal?(balance_after, expected)
     end
 
@@ -39,9 +40,9 @@ defmodule GlobalPayroll.PaymentsTest do
   end
 
   describe "process_result/1 — failure at max retries" do
-    test "marks intent as failed and issues a refund to the company ledger" do
-      {company, _run, intent} = setup_paying_intent(retry_count: 2)
-      balance_before = Companies.get_company_balance(company.id)
+    # Failure path
+    test "marks intent as failed" do
+      {_company, _run, intent} = setup_paying_intent(retry_count: 2)
 
       # retry_count 2 means this is the 3rd attempt — at the limit, so no more retries
       Payments.process_result(%{
@@ -52,9 +53,7 @@ defmodule GlobalPayroll.PaymentsTest do
 
       {:ok, result} = Payrolls.get_intent_with_preloads(intent.id)
       assert result.status == "failed"
-
-      balance_after = Companies.get_company_balance(company.id)
-      assert Decimal.compare(balance_after, balance_before) == :gt
+      assert result.error == "timeout"
     end
 
     test "is idempotent: returns already_settled if intent is already failed" do

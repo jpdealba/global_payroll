@@ -2,6 +2,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
   use GlobalPayrollWeb, :live_view
   alias GlobalPayroll.{Companies, Employees, Taxes, Payrolls, Ledger}
 
+  # Loads company detail page; redirects to /companies if the id is not found
   def mount(%{"id" => id}, _session, socket) do
     case Companies.get_company(id) do
       nil ->
@@ -30,6 +31,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     end
   end
 
+  # Fetches balance, payroll runs, employees (page 1), and transactions (page 1)
   defp load_data(socket, company) do
     {runs, _} = Payrolls.list_runs(company.id)
     balance = Companies.get_company_balance(company.id)
@@ -40,6 +42,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     |> load_transactions(company.id, nil, [], nil)
   end
 
+  # Fetches one page of ledger transactions; prev_cursors is the stack for going back
   defp load_transactions(socket, company_id, cursor, prev_cursors, type) do
     {txs, next} = Companies.list_transactions(company_id, cursor, 25, type)
 
@@ -52,6 +55,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     )
   end
 
+  # Fetches one page of employees with country_tax_rule preloaded; prev_cursors is the back-stack
   defp load_employees(socket, company_id, cursor, prev_cursors) do
     {employees, next_cursor} = Employees.list_employees_by_company(company_id, cursor)
     employees = GlobalPayroll.Repo.preload(employees, :country_tax_rule)
@@ -67,6 +71,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     )
   end
 
+  # Validates the amount, records a ledger deposit, and refreshes the displayed balance
   def handle_event("deposit", %{"amount" => amount}, socket) do
     company = socket.assigns.company
 
@@ -82,6 +87,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     end
   end
 
+  # Creates an employee and their default payment method in sequence; reloads the employee list on success
   def handle_event("create_employee", params, socket) do
     company = socket.assigns.company
 
@@ -115,6 +121,7 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     end
   end
 
+  # Creates a new payroll run in "draft" status and reloads the runs list
   def handle_event("create_run", %{"pay_period" => period}, socket) do
     company = socket.assigns.company
 
@@ -128,27 +135,32 @@ defmodule GlobalPayrollWeb.Live.CompanyShowLive do
     end
   end
 
+  # Advances to the next employee page; pushes current cursor onto the back-stack
   def handle_event("emp_next", _params, socket) do
     next = socket.assigns.emp_next_cursor
     prev_stack = [socket.assigns.emp_cursor | socket.assigns.emp_cursors]
     {:noreply, load_employees(socket, socket.assigns.company.id, next, prev_stack)}
   end
 
+  # Goes back one employee page by popping the previous cursor from the stack
   def handle_event("emp_prev", _params, socket) do
     [prev | rest] = socket.assigns.emp_cursors
     {:noreply, load_employees(socket, socket.assigns.company.id, prev, rest)}
   end
 
+  # Advances to the next transaction page; pushes current cursor onto the back-stack
   def handle_event("tx_next", _params, socket) do
     prev_stack = [socket.assigns.tx_cursor | socket.assigns.tx_cursors]
     {:noreply, load_transactions(socket, socket.assigns.company.id, socket.assigns.tx_next_cursor, prev_stack, socket.assigns.tx_type_filter)}
   end
 
+  # Goes back one transaction page by popping the previous cursor from the stack
   def handle_event("tx_prev", _params, socket) do
     [prev | rest] = socket.assigns.tx_cursors
     {:noreply, load_transactions(socket, socket.assigns.company.id, prev, rest, socket.assigns.tx_type_filter)}
   end
 
+  # Toggles the transaction type filter; clicking the active filter clears it (shows all)
   def handle_event("filter_tx_type", %{"type" => type}, socket) do
     new_filter = if socket.assigns.tx_type_filter == type, do: nil, else: type
     {:noreply, load_transactions(socket, socket.assigns.company.id, nil, [], new_filter)}

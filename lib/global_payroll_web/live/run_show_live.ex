@@ -5,6 +5,8 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
   @poll_interval 2000
   @polling_states ~w(calculating approved paying)
 
+  # Loads the run; starts polling immediately if the run is in an active processing state.
+  # connected?/1 is false on the initial static render — polling only starts on the live WebSocket connection.
   def mount(%{"id" => id}, _session, socket) do
     case Payrolls.get_run(id) do
       {:error, :not_found} ->
@@ -31,6 +33,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     end
   end
 
+  # Polling tick — reloads the run from DB and reschedules itself if still in an active state
   def handle_info(:poll, socket) do
     case Payrolls.get_run(socket.assigns.run.id) do
       {:ok, run} ->
@@ -42,6 +45,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     end
   end
 
+  # Enqueues a calculate_payroll SQS message and starts polling after 800ms to reflect the state change
   def handle_event("start", _params, socket) do
     run = socket.assigns.run
     :ok = Queue.enqueue_calculate_payroll(run.id)
@@ -49,6 +53,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     {:noreply, assign(socket, alert: {:ok, "Calculation queued — status will update shortly"})}
   end
 
+  # Approves the run and immediately starts paying (approve_run/1 transitions to both "approved" and "paying")
   def handle_event("approve", _params, socket) do
     run = socket.assigns.run
 
@@ -63,6 +68,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     end
   end
 
+  # Cancels the run if it is still in "draft" or "pending_approval"; once paying starts it cannot be undone
   def handle_event("cancel", _params, socket) do
     run = socket.assigns.run
 
@@ -80,6 +86,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     end
   end
 
+  # Advances to the next intent page; pushes current cursor onto the back-stack
   def handle_event("intent_next", _params, socket) do
     prev_stack = [socket.assigns.intent_cursor | socket.assigns.intent_cursors]
 
@@ -89,12 +96,14 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
+  # Goes back one intent page by popping the previous cursor from the stack
   def handle_event("intent_prev", _params, socket) do
     [prev | rest] = socket.assigns.intent_cursors
     socket = assign(socket, intent_cursor: prev, intent_cursors: rest)
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
+  # Advances to the next payslip page; pushes current cursor onto the back-stack
   def handle_event("payslip_next", _params, socket) do
     prev_stack = [socket.assigns.payslip_cursor | socket.assigns.payslip_cursors]
 
@@ -107,12 +116,14 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
+  # Goes back one payslip page by popping the previous cursor from the stack
   def handle_event("payslip_prev", _params, socket) do
     [prev | rest] = socket.assigns.payslip_cursors
     socket = assign(socket, payslip_cursor: prev, payslip_cursors: rest)
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
+  # Opens the intent detail drawer with full preloads (employee, payslip, payment_attempts)
   def handle_event("select_intent", %{"id" => id}, socket) do
     case Payrolls.get_intent_with_preloads(id) do
       {:ok, intent} -> {:noreply, assign(socket, selected_intent: intent)}
@@ -120,16 +131,21 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     end
   end
 
+  # Closes the intent detail drawer
   def handle_event("close_intent", _params, socket) do
     {:noreply, assign(socket, selected_intent: nil)}
   end
 
+  # Toggles the intent status filter; clicking the active filter clears it (shows all)
   def handle_event("filter_status", %{"status" => status}, socket) do
     new_filter = if socket.assigns.status_filter == status, do: nil, else: status
     socket = assign(socket, status_filter: new_filter, intent_cursor: nil, intent_cursors: [])
     {:noreply, load_details(socket, socket.assigns.run)}
   end
 
+  # Loads intents and payslips for the run.
+  # Only queries intents/payslips once the run has left "draft"/"calculating" — no data exists yet in those states.
+  # Captures finished_at the first time all intents settle so the UI can show duration without waiting for close_completed_runs.
   defp load_details(socket, run) do
     if run.status in ~w(pending_approval approved paying completed failed) do
       {intents, intent_next} =
@@ -180,6 +196,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
     end
   end
 
+  # Sends a :poll message to self after @poll_interval ms — only while the run is actively changing
   defp schedule_poll_if_needed(status) when status in @polling_states do
     Process.send_after(self(), :poll, @poll_interval)
   end
@@ -188,6 +205,7 @@ defmodule GlobalPayrollWeb.Live.RunShowLive do
 
   defp cancellable?(status), do: status in ["draft", "pending_approval"]
 
+  # Returns true when all intents have settled (no pending or processing left)
   defp all_settled?(counts) do
     map_size(counts) > 0 and
       Map.get(counts, "pending", 0) == 0 and

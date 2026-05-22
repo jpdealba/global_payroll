@@ -1,4 +1,6 @@
 
+![Broadway Worker Scaling](scaling_chart.png)
+
 | Configuration             | Total Processing Time | Memory Usage                                            | CPU Run Queues                       | DB Query Time                           | DB Queue Time             | Notes                                                                                                                            |
 | ------------------------- | --------------------- | ------------------------------------------------------- | ------------------------------------ | --------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `processors: 50`          | ~4 min                | Peak ~8 GB *(partially inflated by LiveView/dashboard)* | Peaks around 80-90                   | Usually 2-20ms with some higher spikes  | Peaks around 15-20ms      | Higher throughput. More pressure on CPU and memory. PostgreSQL started showing moderate pressure under load.                     |

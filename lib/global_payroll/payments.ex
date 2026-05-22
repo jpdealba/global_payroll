@@ -18,11 +18,13 @@ defmodule GlobalPayroll.Payments do
 
   def execute_payment(intent_id) do
     with {:ok, intent} <- fetch_intent(intent_id),
-         :ok <- guard_already_settled(intent) do
+         :ok <- guard_already_settled(intent) do #guard clause to avoid already settled intents (we don't want to try to execute a payment for an already settled intent)
       attempt_payment(intent)
     end
   end
 
+  # Webhook from a real payment provider — not used with mock, kept for when we integrate a real provider
+  # Almost the same as process_result,but we fetch by provider_id instead of intent_id
   def handle_webhook_event(%{"payment_id" => payment_id, "status" => status} = event) do
     with {:ok, intent} <- fetch_by_provider_id(payment_id),
          :ok <- guard_already_settled(intent) do
@@ -66,36 +68,27 @@ defmodule GlobalPayroll.Payments do
     end
   end
 
+  # Lock the intent for update to avoid race conditions
   defp lock_intent(id) do
+    # We use it in the on_success and on_failure functions
+    # "FOR UPDATE SKIP LOCKED"
     from(i in PayrollIntent, where: i.id == ^id, lock: "FOR UPDATE")
     |> Repo.one()
   end
 
+  # Guard clause to avoid already settled intents
   defp guard_already_settled(%{status: status}) when status in ["completed", "failed"],
     do: {:error, :already_settled}
 
+  # If the intent is not already settled, return :ok
   defp guard_already_settled(_), do: :ok
 
   # --- Execute payment ---
-
-  defp attempt_payment(%{status: "processing"} = intent) do
-    attempt_number = intent.retry_count + 1
-
-    case get_attempt(intent.id, attempt_number) do
-      %PaymentAttempt{status: "succeeded"} ->
-        resume_after_provider_success(intent, attempt_number)
-
-      %PaymentAttempt{status: "failed"} = attempt ->
-        resume_after_provider_failure(intent, attempt.error)
-
-      nil ->
-        perform_payment_attempt(intent, attempt_number)
-    end
-  end
-
   defp attempt_payment(intent) do
     attempt_number = intent.retry_count + 1
-
+    # Check if the attempt already exists
+    # If it exists, check if it succeeded or failed
+    # If it didn't exist, perform the payment attempt
     case get_attempt(intent.id, attempt_number) do
       %PaymentAttempt{status: "succeeded"} ->
         resume_after_provider_success(intent, attempt_number)
@@ -109,33 +102,40 @@ defmodule GlobalPayroll.Payments do
   end
 
   defp perform_payment_attempt(intent, attempt_number) do
+    # Generate an idempotency key to avoid duplicate attempts
     key = "intent-#{intent.id}-attempt-#{attempt_number}"
 
     intent =
+      # Update the intent status to processing
       intent
       |> PayrollIntent.changeset(%{idempotency_key: key, status: "processing"})
       |> Repo.update!()
 
-    result = GlobalPayroll.Payments.MockPaymentProvider.call(intent)
 
+    result = GlobalPayroll.Payments.MockPaymentProvider.call(intent)
+    # Save the result of the payment attempt, update the intent with the provider_payment_id and dispatch the result to the payment-results queue
     with {:ok, _} <- record_attempt(intent, attempt_number, result),
          {:ok, intent} <- persist_provider_result(intent, result) do
       dispatch_provider_result(intent, result)
     end
   end
 
+  # If the payment provider succeeds, update the intent with the provider_payment_id
   defp persist_provider_result(intent, {:ok, provider_id}) do
     intent
     |> PayrollIntent.changeset(%{provider_payment_id: provider_id})
     |> Repo.update()
   end
 
+  # If the payment provider fails, do nothing so we can retry the payment
   defp persist_provider_result(intent, {:error, _}), do: {:ok, intent}
 
+  # If the payment provider succeeds, dispatch the success result to the payment-results queue
   defp dispatch_provider_result(intent, {:ok, _}) do
     dispatch_success_result(intent)
   end
 
+  # If the payment provider fails, dispatch the failure result to the payment-results queue
   defp dispatch_provider_result(intent, {:error, reason}) do
     dispatch_failure_result(intent, reason)
   end
@@ -162,9 +162,11 @@ defmodule GlobalPayroll.Payments do
   # --- Resume after redelivery / reconciliation ---
 
   defp resume_after_provider_success(intent, attempt_number) do
+    # If the intent has a provider_payment_id, use it, otherwise generate a mock provider_id
     intent = Repo.get!(PayrollIntent, intent.id)
     provider_id = intent.provider_payment_id || mock_provider_id(intent, attempt_number)
 
+    # update the intent with the provider_payment_id if it doesn't have one
     intent =
       if intent.provider_payment_id do
         intent
@@ -187,8 +189,10 @@ defmodule GlobalPayroll.Payments do
   # --- Attempts ---
 
   defp record_attempt(intent, attempt_number, result) do
-    status = if match?({:ok, _}, result), do: "succeeded", else: "failed"
-    error = if match?({:error, _}, result), do: elem(result, 1), else: nil
+    {status, error} = case result do
+      {:ok, _} -> {"succeeded", nil}
+      {:error, reason} -> {"failed", reason}
+    end
 
     %PaymentAttempt{}
     |> PaymentAttempt.changeset(%{
@@ -204,6 +208,7 @@ defmodule GlobalPayroll.Payments do
         {:ok, attempt}
 
       {:error, %Ecto.Changeset{}} ->
+        # if the attempt already exists, return it, otherwise return an error
         case get_attempt(intent.id, attempt_number) do
           %PaymentAttempt{} = attempt -> {:ok, attempt}
           nil -> {:error, :attempt_insert_failed}
@@ -212,7 +217,7 @@ defmodule GlobalPayroll.Payments do
   end
 
   defp get_attempt(intent_id, attempt_number) do
-    Repo.get_by(PaymentAttempt, payroll_intent_id: intent_id, attempt_number: attempt_number)
+    Repo.get_by(PaymentAttempt, [payroll_intent_id: intent_id, attempt_number: attempt_number])
   end
 
   # --- Result handling ---
@@ -284,10 +289,10 @@ defmodule GlobalPayroll.Payments do
 
             case Queue.enqueue_execute_payment(intent.id) do
               :ok -> :retrying
-              {:error, reason} -> Repo.rollback(reason)
+              {:error, reason} -> Repo.rollback(reason)  # undo the pending/retry_count update because the retry message was not enqueued
             end
           else
-            Repo.rollback({:max_retries, reason})
+            Repo.rollback({:max_retries, reason}) # abort this retry flow so the caller can mark the intent as failed
           end
       end
     end)
@@ -299,7 +304,7 @@ defmodule GlobalPayroll.Payments do
         {:error, :already_settled}
 
       {:error, {:max_retries, reason}} ->
-        on_max_retries(intent, reason)
+        on_max_retries(intent, reason) # mark the intent as failed
 
       {:error, reason} ->
         {:error, reason}
@@ -337,17 +342,20 @@ defmodule GlobalPayroll.Payments do
   end
 
   # --- Reconciliation ---
-
+  # Calculate the cutoff time used to determine which intents are considered stuck
   defp stuck_cutoff do
     DateTime.utc_now() |> DateTime.add(-@reconcile_after_seconds, :second)
   end
 
+  # Worker died after the provider responded but before the result was enqueued.
+  # The attempt exists in DB. Resume from its result instead of calling the provider again.
   defp reconcile_processing_with_attempts do
     cutoff = stuck_cutoff()
-
+    # If a payment exists for the current retry number and the intent is in processing or pending
     from(pi in PayrollIntent,
       join: r in PayrollRun,
       on: r.id == pi.payroll_run_id,
+      # join only the attempt for the current retry number
       join: pa in PaymentAttempt,
       on: pa.payroll_intent_id == pi.id and pa.attempt_number == pi.retry_count + 1,
       where: r.status == "paying" and pi.status in ["processing", "pending"],
@@ -356,21 +364,24 @@ defmodule GlobalPayroll.Payments do
     )
     |> Repo.all()
     |> Enum.each(fn {intent, attempt} ->
+      # reload to get the freshest state in case another process touched it (race condition)
       intent = Repo.get!(PayrollIntent, intent.id)
-
       case attempt.status do
-        "succeeded" -> resume_after_provider_success(intent, attempt.attempt_number)
-        "failed" -> resume_after_provider_failure(intent, attempt.error)
+        "succeeded" -> resume_after_provider_success(intent, attempt.attempt_number) # if the attempt succeeded, resume the payment
+        "failed" -> resume_after_provider_failure(intent, attempt.error) # if the attempt failed, dispatch the failure result to the payment-results queue
       end
     end)
   end
 
+  # Worker died before calling the provider — no attempt exists.
+  # Reset to "pending" and re-enqueue so it starts fresh.
   defp reconcile_processing_without_attempts do
     cutoff = stuck_cutoff()
 
     from(pi in PayrollIntent,
       join: r in PayrollRun,
       on: r.id == pi.payroll_run_id,
+      # left_join + is_nil means no attempt exists for this intent
       left_join: pa in PaymentAttempt,
       on: pa.payroll_intent_id == pi.id,
       where: r.status == "paying" and pi.status == "processing" and is_nil(pa.id),
@@ -391,12 +402,15 @@ defmodule GlobalPayroll.Payments do
     end)
   end
 
+  # The SQS message was lost before the worker picked it up — intent never moved from "pending".
+  # Re-enqueue directly, no status reset needed.
   defp reconcile_pending_without_attempts do
     cutoff = stuck_cutoff()
 
     from(pi in PayrollIntent,
       join: r in PayrollRun,
       on: r.id == pi.payroll_run_id,
+      # left_join + is_nil means no attempt exists for this intent
       left_join: pa in PaymentAttempt,
       on: pa.payroll_intent_id == pi.id,
       where: r.status == "paying" and pi.status == "pending" and is_nil(pa.id),
